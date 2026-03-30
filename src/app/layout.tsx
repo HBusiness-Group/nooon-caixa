@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'NOOON Caixa',
   description: 'Gestão financeira pessoal NOOON',
   manifest: '/manifest.json',
-  themeColor: '#0d1410',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
