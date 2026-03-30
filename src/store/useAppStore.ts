@@ -46,12 +46,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadAccounts: async () => {
     const { data } = await supabase
-      .from('account_balances')
+      .from('accounts')
       .select('*')
       .eq('is_active', true)
       .order('created_at')
     if (data && data.length > 0) {
-      set({ accounts: data as Account[], currentAccountId: data[0].id })
+      const accounts = data as unknown as Account[]
+      set({ accounts, currentAccountId: accounts[0].id })
     }
   },
 
