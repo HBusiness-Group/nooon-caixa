@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --nooon-dark:  #0d1410;
+  --nooon-dark2: #111a14;
+  --nooon-dark3: #172010;
+  --nooon-dark4: #1e2a18;
+  --nooon-dark5: #243020;
+  --nooon-deep:  #1a5c2a;
+  --nooon-lime:  #6dd400;
+  --nooon-lime2: #85e81a;
+  --red:   #ff5757;
+  --amber: #ffb340;
+  --blue:  #40b4ff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: var(--nooon-dark);
+  color: #e8f0e4;
+  font-family: 'Barlow', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--nooon-dark5); border-radius: 2px; }
+
+/* Mono font utility */
+.font-mono-num {
+  font-family: 'JetBrains Mono', monospace;
+}
