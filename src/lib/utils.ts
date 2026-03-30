@@ -13,8 +13,8 @@ export function fmtCurrency(value: number): string {
 
 export function fmtCurrencyK(value: number): string {
   const abs = Math.abs(value)
-  if (abs >= 1000) return (value / 1000).toFixed(1) + 'k'
-  return value.toFixed(0)
+  if (abs >= 1000) return 'R$' + (value / 1000).toFixed(1) + 'k'
+  return 'R$' + Math.round(value)
 }
 
 export function fmtDate(dateStr: string): string {
