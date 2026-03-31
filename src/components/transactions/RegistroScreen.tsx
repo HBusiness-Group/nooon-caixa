@@ -49,7 +49,7 @@ export default function RegistroScreen() {
     else if (filter === 'income') txs = txs.filter(t => t.type === 'income')
     else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
     else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
-    return txs.sort((a, b) => b.date.localeCompare(a.date))
+    return txs.sort((a, b) => a.date.localeCompare(b.date))
   }, [transactions, filter])
 
   const thisMonthTxs = transactions.filter(t => t.date.startsWith(thisMonth))
@@ -95,7 +95,7 @@ export default function RegistroScreen() {
       </div>
 
       <div className="px-4">
-        {Object.keys(groups).sort((a, b) => b.localeCompare(a)).map(month => {
+        {Object.keys(groups).sort((a, b) => a.localeCompare(b)).map(month => {
           const [y, m] = month.split('-')
           return (
             <div key={month}>
