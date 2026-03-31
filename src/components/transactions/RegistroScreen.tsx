@@ -25,8 +25,10 @@ export default function RegistroScreen() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
 
   useEffect(() => {
-    markOverdue()
-  }, [])
+    if (transactions.length > 0) {
+      markOverdue()
+    }
+  }, [transactions])
 
   async function markOverdue() {
     const today = new Date().toISOString().split('T')[0]
