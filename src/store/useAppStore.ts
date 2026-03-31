@@ -75,11 +75,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentAccountId: null,
 
   loadAccounts: async () => {
-    const res = await supabase.from('accounts').select('*').eq('is_active', true).order('created_at')
+    const res = await supabase
+      .from('account_balances')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at')
     const data: any[] = (res as any).data || []
     if (data.length > 0) {
-      const accounts: Account[] = data.map((a: any) => ({ ...a, current_balance: Number(a.initial_balance) }))
-      set({ accounts, currentAccountId: accounts[0].id })
+      const accounts: Account[] = data.map((a: any) => ({
+        ...a,
+        current_balance: Number(a.current_balance)
+      }))
+      set(s => ({
+        accounts,
+        currentAccountId: s.currentAccountId ?? accounts[0].id
+      }))
     }
   },
 
