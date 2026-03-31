@@ -33,7 +33,7 @@ export default function CalendarioScreen() {
 
   // Running balance from initial accounts balance
   const saldoByDay = useMemo(() => {
-    let s = 12000 // TODO: replace with sum of account initial_balances + prior completed txs
+    let s = 0
     const map: Record<string, number> = {}
     days.forEach(({ ds }) => {
       ;(txByDay[ds] || []).forEach(t => { s += t.type === 'income' ? t.amount : -t.amount })
