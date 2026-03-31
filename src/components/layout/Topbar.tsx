@@ -9,7 +9,7 @@ export default function Topbar() {
   const [showPicker, setShowPicker] = useState(false)
 
   const current = accounts.find(a => a.id === currentAccountId)
-  const balance = current?.current_balance ?? current?.initial_balance ?? 0
+  const balance = accounts.reduce((s, a) => s + (a.current_balance ?? a.initial_balance ?? 0), 0)
 
   return (
     <header className="flex items-center justify-between px-4 py-3 bg-[#111a14] border-b border-[rgba(109,212,0,0.08)] flex-shrink-0">
