@@ -29,7 +29,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1410] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#0f1f12] flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
 
         {/* Logo */}
@@ -41,21 +41,21 @@ export default function AuthPage() {
             </svg>
             <span className="font-['Barlow_Condensed'] text-3xl font-black tracking-wide text-[#1a5c2a]">
               NO<span className="text-[#6dd400]">O</span>ON
-              <span className="text-[#4a6644] text-lg font-semibold ml-2">CAIXA</span>
+              <span className="text-[#7ab070] text-lg font-semibold ml-2">CAIXA</span>
             </span>
           </div>
-          <p className="text-[#4a6644] text-sm tracking-widest uppercase">Gestão financeira pessoal</p>
+          <p className="text-[#7ab070] text-sm tracking-widest uppercase">Gestão financeira pessoal</p>
         </div>
 
         {/* Card */}
-        <div className="bg-[#111a14] border border-[rgba(109,212,0,0.1)] rounded-2xl p-6">
+        <div className="bg-[#1c2a1f] border border-[rgba(109,212,0,0.1)] rounded-2xl p-6">
           <div className="flex gap-2 mb-6">
             {(['login', 'signup'] as const).map(m => (
               <button key={m} onClick={() => setMode(m)}
                 className={`flex-1 py-2 rounded-lg font-['Barlow_Condensed'] font-bold text-sm uppercase tracking-wider transition-all ${
                   mode === m
                     ? 'bg-[rgba(109,212,0,0.1)] text-[#6dd400] border border-[rgba(109,212,0,0.3)]'
-                    : 'text-[#4a6644] border border-[rgba(255,255,255,0.05)]'
+                    : 'text-[#7ab070] border border-[rgba(255,255,255,0.05)]'
                 }`}>
                 {m === 'login' ? 'Entrar' : 'Cadastrar'}
               </button>
@@ -64,26 +64,26 @@ export default function AuthPage() {
 
           {mode === 'signup' && (
             <div className="mb-4">
-              <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-2">Nome completo</label>
+              <label className="block text-[10px] font-bold text-[#7ab070] uppercase tracking-widest mb-2">Nome completo</label>
               <input value={name} onChange={e => setName(e.target.value)}
                 placeholder="Seu nome"
-                className="w-full bg-[#1e2a18] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#3a5030]" />
+                className="w-full bg-[#223026] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#6a9060]" />
             </div>
           )}
 
           <div className="mb-4">
-            <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-2">E-mail</label>
+            <label className="block text-[10px] font-bold text-[#7ab070] uppercase tracking-widest mb-2">E-mail</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="seu@email.com"
-              className="w-full bg-[#1e2a18] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#3a5030]" />
+              className="w-full bg-[#223026] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#6a9060]" />
           </div>
 
           <div className="mb-6">
-            <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-2">Senha</label>
+            <label className="block text-[10px] font-bold text-[#7ab070] uppercase tracking-widest mb-2">Senha</label>
             <input type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder="••••••••"
               onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              className="w-full bg-[#1e2a18] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#3a5030]" />
+              className="w-full bg-[#223026] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#6a9060]" />
           </div>
 
           {message && (
@@ -98,7 +98,7 @@ export default function AuthPage() {
           </button>
         </div>
 
-        <p className="text-center text-[#3a5030] text-xs mt-6">
+        <p className="text-center text-[#6a9060] text-xs mt-6">
           NOOON Caixa · HBusiness Group Tecnologia
         </p>
       </div>
