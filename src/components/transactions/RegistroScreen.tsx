@@ -74,8 +74,8 @@ export default function RegistroScreen() {
           { label: 'Saídas', value: expense, color: 'text-[#ff5757]' },
           { label: 'Resultado', value: result, color: result >= 0 ? 'text-[#6dd400]' : 'text-[#ff5757]' },
         ].map(s => (
-          <div key={s.label} className="bg-[#172010] border border-[rgba(109,212,0,0.08)] rounded-xl p-2.5">
-            <div className="text-[9px] font-bold text-[#3a5030] uppercase tracking-widest mb-1">{s.label}</div>
+          <div key={s.label} className="bg-[#1c2a1f] border border-[rgba(109,212,0,0.18)] rounded-xl p-2.5">
+            <div className="text-[9px] font-bold text-[#6a9060] uppercase tracking-widest mb-1">{s.label}</div>
             <div className={`font-['JetBrains_Mono'] text-[13px] font-semibold ${s.color}`}>
               {fmtCurrency(Math.abs(s.value))}
             </div>
@@ -89,7 +89,7 @@ export default function RegistroScreen() {
             className={`whitespace-nowrap text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all flex-shrink-0 ${
               filter === f.id
                 ? 'bg-[rgba(109,212,0,0.1)] text-[#6dd400] border-[rgba(109,212,0,0.25)]'
-                : 'bg-[#172010] text-[#4a6644] border-[rgba(255,255,255,0.06)] hover:text-[#8aab80]'
+                : 'bg-[#1c2a1f] text-[#7ab070] border-[rgba(255,255,255,0.06)] hover:text-[#8aab80]'
             }`}>
             {f.label}
           </button>
@@ -101,7 +101,7 @@ export default function RegistroScreen() {
           const [y, m] = month.split('-')
           return (
             <div key={month}>
-              <div className="text-[10px] font-bold text-[#3a5030] uppercase tracking-widest py-3 border-t border-[rgba(109,212,0,0.06)] first:border-t-0">
+              <div className="text-[10px] font-bold text-[#6a9060] uppercase tracking-widest py-3 border-t border-[rgba(109,212,0,0.15)] first:border-t-0">
                 {MONTH_NAMES[parseInt(m) - 1]} {y}
               </div>
               {groups[month].map(tx => (
@@ -111,7 +111,7 @@ export default function RegistroScreen() {
           )
         })}
         {filtered.length === 0 && (
-          <div className="text-center text-[#3a5030] text-sm py-16">Nenhum lançamento encontrado</div>
+          <div className="text-center text-[#6a9060] text-sm py-16">Nenhum lançamento encontrado</div>
         )}
       </div>
 
@@ -169,22 +169,22 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
 
   return (
     <div className="mb-1.5">
-      <div className="flex items-center gap-2.5 bg-[#172010] border border-[rgba(109,212,0,0.07)] rounded-xl p-2.5 relative overflow-hidden hover:border-[rgba(109,212,0,0.15)] transition-colors cursor-pointer"
+      <div className="flex items-center gap-2.5 bg-[#1c2a1f] border border-[rgba(109,212,0,0.15)] rounded-xl p-2.5 relative overflow-hidden hover:border-[rgba(109,212,0,0.15)] transition-colors cursor-pointer"
         onClick={() => setShowActions(!showActions)}>
         <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl" style={{ background: sc.bar }} />
-        <div className="w-8 h-8 rounded-lg bg-[#1e2a18] flex items-center justify-center text-sm flex-shrink-0 ml-1">
+        <div className="w-8 h-8 rounded-lg bg-[#223026] flex items-center justify-center text-sm flex-shrink-0 ml-1">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold text-[#e8f0e4] truncate">{tx.description}</div>
+          <div className="text-[13px] font-semibold text-[#e8f5e2] truncate">{tx.description}</div>
           <div className="flex items-center gap-1.5 mt-0.5">
             {tx.account && (
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: tx.account.color }} />
-                <span className="text-[10px] text-[#3a5030]">{tx.account.name}</span>
+                <span className="text-[10px] text-[#6a9060]">{tx.account.name}</span>
               </span>
             )}
-            <span className="text-[10px] text-[#3a5030]">· {CAT_LABELS[tx.category]}</span>
+            <span className="text-[10px] text-[#6a9060]">· {CAT_LABELS[tx.category]}</span>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
@@ -192,7 +192,7 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
             {isIncome ? '+' : '-'}{fmtCurrency(tx.amount)}
           </div>
           <div className="flex items-center gap-1 justify-end mt-1">
-            <span className="text-[10px] text-[#3a5030]">dia {day}</span>
+            <span className="text-[10px] text-[#6a9060]">dia {day}</span>
             {tx.installment_number && (
               <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(64,180,255,0.1)] text-[#40b4ff]">
                 {tx.installment_number}/{tx.installment_group?.total_installments ?? '?'}
