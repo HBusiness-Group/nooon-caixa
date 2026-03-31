@@ -19,7 +19,7 @@ export default function ResumoScreen() {
 
   // Daily balance curve
   const chartData = useMemo(() => {
-    let s = 12000
+    let s = 0
     return Array.from({ length: daysInMonth }, (_, i) => {
       const d = i + 1
       const ds = `${monthStr}-${String(d).padStart(2, '0')}`
