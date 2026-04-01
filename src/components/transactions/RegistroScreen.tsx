@@ -5,6 +5,7 @@ import { CAT_ICONS, CAT_LABELS, fmtCurrency, MONTH_NAMES } from '@/lib/utils'
 import TransactionModal from './TransactionModal'
 import type { Transaction } from '@/store/useAppStore'
 import { supabase } from '@/lib/supabase'
+import { format } from 'date-fns'
 
 type Filter = 'todos' | 'completed' | 'planned' | 'overdue' | 'income' | 'expense' | 'parcela'
 
@@ -18,6 +19,12 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'parcela', label: 'Parcelados' },
 ]
 
+function statusPriority(status: string) {
+  if (status === 'overdue') return 0
+  if (status === 'planned') return 1
+  return 2 // completed vai para o final
+}
+
 export default function RegistroScreen() {
   const { transactions, loadTransactions, loadAccounts } = useAppStore()
   const [filter, setFilter] = useState<Filter>('todos')
@@ -25,10 +32,8 @@ export default function RegistroScreen() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
 
   useEffect(() => {
-    if (transactions.length > 0) {
-      markOverdue()
-    }
-  }, [transactions])
+    if (transactions.length > 0) markOverdue()
+  }, [transactions.length])
 
   async function markOverdue() {
     const today = new Date().toISOString().split('T')[0]
@@ -51,16 +56,12 @@ export default function RegistroScreen() {
     else if (filter === 'income') txs = txs.filter(t => t.type === 'income')
     else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
     else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
+
+    // Ordena: atrasados → planejados → realizados, depois por data
     return txs.sort((a, b) => {
-      // Realizados vão para o final
-      const aCompleted = a.status === 'completed' ? 1 : 0
-      const bCompleted = b.status === 'completed' ? 1 : 0
-      if (aCompleted !== bCompleted) return aCompleted - bCompleted
-      // Atrasados vêm antes de planejados
-      const aPriority = a.status === 'overdue' ? 0 : a.status === 'planned' ? 1 : 2
-      const bPriority = b.status === 'overdue' ? 0 : b.status === 'planned' ? 1 : 2
-      if (aPriority !== bPriority) return aPriority - bPriority
-      // Por data crescente dentro do mesmo status
+      const pa = statusPriority(a.status)
+      const pb = statusPriority(b.status)
+      if (pa !== pb) return pa - pb
       return a.date.localeCompare(b.date)
     })
   }, [transactions, filter])
@@ -70,6 +71,7 @@ export default function RegistroScreen() {
   const expense = thisMonthTxs.filter(t => t.type === 'expense' && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
   const result = income - expense
 
+  // Agrupa por mês mantendo a ordem já definida acima
   const groups: Record<string, Transaction[]> = {}
   filtered.forEach(t => {
     const m = t.date.substring(0, 7)
@@ -77,17 +79,26 @@ export default function RegistroScreen() {
     groups[m].push(t)
   })
 
+  // Ordena os meses: meses com pendências primeiro, depois por data
+  const sortedMonths = Object.keys(groups).sort((a, b) => {
+    const aHasPending = groups[a].some(t => t.status !== 'completed')
+    const bHasPending = groups[b].some(t => t.status !== 'completed')
+    if (aHasPending && !bHasPending) return -1
+    if (!aHasPending && bHasPending) return 1
+    return a.localeCompare(b)
+  })
+
   return (
     <div className="relative pb-20">
       <div className="grid grid-cols-3 gap-1.5 p-4 pb-3">
         {[
-          { label: 'Entradas', value: income, color: 'text-[#6dd400]' },
-          { label: 'Saídas', value: expense, color: 'text-[#ff5757]' },
-          { label: 'Resultado', value: result, color: result >= 0 ? 'text-[#6dd400]' : 'text-[#ff5757]' },
+          { label: 'Entradas', value: income, color: '#6dd400' },
+          { label: 'Saídas', value: expense, color: '#ff6b6b' },
+          { label: 'Resultado', value: result, color: result >= 0 ? '#6dd400' : '#ff6b6b' },
         ].map(s => (
-          <div key={s.label} className="bg-[#1c2a1f] border border-[rgba(109,212,0,0.18)] rounded-xl p-2.5">
-            <div className="text-[9px] font-bold text-[#6a9060] uppercase tracking-widest mb-1">{s.label}</div>
-            <div className={`font-['JetBrains_Mono'] text-[13px] font-semibold ${s.color}`}>
+          <div key={s.label} className="rounded-xl p-2.5 border" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.15)' }}>
+            <div className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{ color: '#6a9060' }}>{s.label}</div>
+            <div className="font-['JetBrains_Mono'] text-[13px] font-semibold" style={{ color: s.color }}>
               {fmtCurrency(Math.abs(s.value))}
             </div>
           </div>
@@ -97,23 +108,27 @@ export default function RegistroScreen() {
       <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-none">
         {FILTERS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)}
-            className={`whitespace-nowrap text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all flex-shrink-0 ${
-              filter === f.id
-                ? 'bg-[rgba(109,212,0,0.1)] text-[#6dd400] border-[rgba(109,212,0,0.25)]'
-                : 'bg-[#1c2a1f] text-[#7ab070] border-[rgba(255,255,255,0.06)] hover:text-[#8aab80]'
-            }`}>
+            className="whitespace-nowrap text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all flex-shrink-0"
+            style={{
+              background: filter === f.id ? 'rgba(109,212,0,0.1)' : '#1c2a1f',
+              borderColor: filter === f.id ? 'rgba(109,212,0,0.3)' : 'rgba(109,212,0,0.12)',
+              color: filter === f.id ? '#6dd400' : '#7ab070',
+            }}>
             {f.label}
           </button>
         ))}
       </div>
 
       <div className="px-4">
-        {Object.keys(groups).sort((a, b) => a.localeCompare(b)).map(month => {
+        {sortedMonths.map(month => {
           const [y, m] = month.split('-')
+          const hasPending = groups[month].some(t => t.status !== 'completed')
           return (
             <div key={month}>
-              <div className="text-[10px] font-bold text-[#6a9060] uppercase tracking-widest py-3 border-t border-[rgba(109,212,0,0.15)] first:border-t-0">
+              <div className="text-[10px] font-bold uppercase tracking-widest py-3 border-t flex items-center gap-2"
+                style={{ color: hasPending ? '#ffc04d' : '#6a9060', borderColor: 'rgba(109,212,0,0.12)' }}>
                 {MONTH_NAMES[parseInt(m) - 1]} {y}
+                {hasPending && <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(255,192,77,0.15)', color: '#ffc04d' }}>pendências</span>}
               </div>
               {groups[month].map(tx => (
                 <TxItem key={tx.id} tx={tx} onEdit={() => setEditingTx(tx)} />
@@ -122,12 +137,13 @@ export default function RegistroScreen() {
           )
         })}
         {filtered.length === 0 && (
-          <div className="text-center text-[#6a9060] text-sm py-16">Nenhum lançamento encontrado</div>
+          <div className="text-center py-16 text-sm" style={{ color: '#4a6844' }}>Nenhum lançamento encontrado</div>
         )}
       </div>
 
       <button onClick={() => { setEditingTx(null); setShowModal(true) }}
-        className="fixed bottom-6 right-4 w-12 h-12 bg-[#6dd400] text-[#0d1410] rounded-[14px] text-2xl font-bold flex items-center justify-center shadow-lg shadow-[rgba(109,212,0,0.2)] hover:opacity-90 transition-opacity z-40">
+        className="fixed bottom-6 right-4 w-12 h-12 rounded-[14px] text-2xl font-bold flex items-center justify-center z-40 hover:opacity-90 transition-opacity"
+        style={{ background: '#6dd400', color: '#0f1f12', boxShadow: '0 4px 20px rgba(109,212,0,0.25)' }}>
         +
       </button>
 
@@ -145,31 +161,55 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   const { deleteTransaction, loadTransactions, loadAccounts } = useAppStore()
   const [showActions, setShowActions] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showPaymentDate, setShowPaymentDate] = useState(false)
+  const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
   const icon = CAT_ICONS[tx.category] || '📌'
   const isIncome = tx.type === 'income'
   const day = tx.date.split('-')[2]
 
-  const statusConfig = {
-    completed: { color: 'text-[#6dd400]', bg: 'bg-[rgba(109,212,0,0.1)]', label: 'OK', bar: '#6dd400' },
-    planned:   { color: 'text-[#ffb340]', bg: 'bg-[rgba(255,179,64,0.1)]', label: 'Plan', bar: '#ffb340' },
-    overdue:   { color: 'text-[#ff5757]', bg: 'bg-[rgba(255,87,87,0.1)]', label: 'Atrasado', bar: '#ff5757' },
-    cancelled: { color: 'text-[#555]', bg: 'bg-[rgba(100,100,100,0.1)]', label: 'Cancel', bar: '#555' },
+  const statusConfig: Record<string, { color: string; bg: string; label: string; bar: string }> = {
+    completed: { color: '#6dd400', bg: 'rgba(109,212,0,0.1)', label: 'OK', bar: '#6dd400' },
+    planned:   { color: '#ffc04d', bg: 'rgba(255,192,77,0.1)', label: 'Plan', bar: '#ffc04d' },
+    overdue:   { color: '#ff6b6b', bg: 'rgba(255,107,107,0.1)', label: 'Atrasado', bar: '#ff6b6b' },
+    cancelled: { color: '#555', bg: 'rgba(100,100,100,0.1)', label: 'Cancel', bar: '#555' },
   }
-  const sc = statusConfig[tx.status as keyof typeof statusConfig] || statusConfig.planned
-  const valColor = isIncome ? 'text-[#6dd400]' : tx.status === 'completed' ? 'text-[#ff5757]' : 'text-[#ffb340]'
+  const sc = statusConfig[tx.status] || statusConfig.planned
+  const valColor = isIncome ? '#6dd400' : tx.status === 'completed' ? '#ff6b6b' : '#ffc04d'
+
+  async function handleMarkCompleted() {
+    if (tx.status === 'overdue') {
+      // Abre seletor de data antes de marcar como realizado
+      setShowPaymentDate(true)
+      return
+    }
+    await cycleStatus()
+  }
+
+  async function confirmPaymentDate() {
+    if (loading) return
+    setLoading(true)
+    const newDesc = `${tx.description} · Pago em ${format(new Date(paymentDate + 'T12:00:00'), 'dd/MM/yyyy')}`
+    await supabase.from('transactions').update({
+      status: 'completed',
+      description: newDesc,
+    } as any).eq('id', tx.id)
+    await loadTransactions()
+    await loadAccounts()
+    setShowPaymentDate(false)
+    setShowActions(false)
+    setLoading(false)
+  }
 
   async function cycleStatus() {
     if (loading) return
     setLoading(true)
-    const next = tx.status === 'completed' ? 'planned'
-      : tx.status === 'planned' ? 'completed'
-      : tx.status === 'overdue' ? 'completed'
-      : 'planned'
+    const next = tx.status === 'completed' ? 'planned' : 'completed'
     await supabase.from('transactions').update({ status: next } as any).eq('id', tx.id)
     await loadTransactions()
     await loadAccounts()
     setLoading(false)
+    setShowActions(false)
   }
 
   async function handleDelete() {
@@ -180,54 +220,82 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
 
   return (
     <div className="mb-1.5">
-      <div className="flex items-center gap-2.5 bg-[#1c2a1f] border border-[rgba(109,212,0,0.15)] rounded-xl p-2.5 relative overflow-hidden hover:border-[rgba(109,212,0,0.15)] transition-colors cursor-pointer"
-        onClick={() => setShowActions(!showActions)}>
+      <div className="flex items-center gap-2.5 rounded-xl p-2.5 relative overflow-hidden cursor-pointer border transition-colors"
+        style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.12)' }}
+        onClick={() => { setShowActions(!showActions); setShowPaymentDate(false) }}>
         <div className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl" style={{ background: sc.bar }} />
-        <div className="w-8 h-8 rounded-lg bg-[#223026] flex items-center justify-center text-sm flex-shrink-0 ml-1">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-sm flex-shrink-0 ml-1" style={{ background: '#223026' }}>
           {icon}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold text-[#e8f5e2] truncate">{tx.description}</div>
+          <div className="text-[13px] font-semibold truncate" style={{ color: '#e8f5e2' }}>{tx.description}</div>
           <div className="flex items-center gap-1.5 mt-0.5">
             {tx.account && (
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: tx.account.color }} />
-                <span className="text-[10px] text-[#6a9060]">{tx.account.name}</span>
+                <span className="text-[10px]" style={{ color: '#4a6844' }}>{tx.account.name}</span>
               </span>
             )}
-            <span className="text-[10px] text-[#6a9060]">· {CAT_LABELS[tx.category]}</span>
+            <span className="text-[10px]" style={{ color: '#4a6844' }}>· {CAT_LABELS[tx.category]}</span>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
-          <div className={`font-['JetBrains_Mono'] text-[13px] font-semibold ${valColor}`}>
+          <div className="font-['JetBrains_Mono'] text-[13px] font-semibold" style={{ color: valColor }}>
             {isIncome ? '+' : '-'}{fmtCurrency(tx.amount)}
           </div>
           <div className="flex items-center gap-1 justify-end mt-1">
-            <span className="text-[10px] text-[#6a9060]">dia {day}</span>
+            <span className="text-[10px]" style={{ color: '#4a6844' }}>dia {day}</span>
             {tx.installment_number && (
-              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-[rgba(64,180,255,0.1)] text-[#40b4ff]">
+              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(91,200,255,0.1)', color: '#5bc8ff' }}>
                 {tx.installment_number}/{tx.installment_group?.total_installments ?? '?'}
               </span>
             )}
-            <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>
+            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: sc.bg, color: sc.color }}>
               {sc.label}
             </span>
           </div>
         </div>
       </div>
 
-      {showActions && (
+      {/* Seletor de data de pagamento para atrasados */}
+      {showPaymentDate && (
+        <div className="mx-1 mt-1 mb-1 p-3 rounded-xl border" style={{ background: '#223026', borderColor: 'rgba(255,192,77,0.25)' }}>
+          <div className="text-xs font-semibold mb-2" style={{ color: '#ffc04d' }}>
+            Informe a data real do pagamento:
+          </div>
+          <div className="flex gap-2 items-center">
+            <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+              className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+              style={{ background: '#1c2a1f', border: '1px solid rgba(255,192,77,0.3)', color: '#e8f5e2' }} />
+            <button onClick={confirmPaymentDate} disabled={loading}
+              className="px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90"
+              style={{ background: '#6dd400', color: '#0f1f12' }}>
+              {loading ? '...' : 'Confirmar'}
+            </button>
+            <button onClick={() => setShowPaymentDate(false)}
+              className="px-3 py-2 rounded-lg text-sm border"
+              style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showActions && !showPaymentDate && (
         <div className="flex gap-2 px-1 pt-1 pb-1">
-          <button onClick={cycleStatus} disabled={loading}
-            className="flex-1 py-2 rounded-lg text-[11px] font-semibold bg-[rgba(109,212,0,0.08)] text-[#6dd400] border border-[rgba(109,212,0,0.15)] hover:bg-[rgba(109,212,0,0.15)] transition-colors">
+          <button onClick={handleMarkCompleted} disabled={loading}
+            className="flex-1 py-2 rounded-lg text-[11px] font-semibold border transition-colors"
+            style={{ background: 'rgba(109,212,0,0.08)', borderColor: 'rgba(109,212,0,0.2)', color: '#6dd400' }}>
             {loading ? '...' : tx.status === 'completed' ? '↩ Voltar para planejado' : '✓ Marcar como realizado'}
           </button>
           <button onClick={onEdit}
-            className="px-3 py-2 rounded-lg text-[11px] font-semibold bg-[rgba(64,180,255,0.08)] text-[#40b4ff] border border-[rgba(64,180,255,0.15)] hover:bg-[rgba(64,180,255,0.15)] transition-colors">
+            className="px-3 py-2 rounded-lg text-[11px] font-semibold border transition-colors"
+            style={{ background: 'rgba(91,200,255,0.08)', borderColor: 'rgba(91,200,255,0.2)', color: '#5bc8ff' }}>
             ✏ Editar
           </button>
           <button onClick={handleDelete}
-            className="px-3 py-2 rounded-lg text-[11px] font-semibold bg-[rgba(255,87,87,0.08)] text-[#ff5757] border border-[rgba(255,87,87,0.15)] hover:bg-[rgba(255,87,87,0.15)] transition-colors">
+            className="px-3 py-2 rounded-lg text-[11px] font-semibold border transition-colors"
+            style={{ background: 'rgba(255,107,107,0.08)', borderColor: 'rgba(255,107,107,0.2)', color: '#ff6b6b' }}>
             ✕
           </button>
         </div>
