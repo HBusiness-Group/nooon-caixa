@@ -22,7 +22,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 function statusPriority(status: string) {
   if (status === 'overdue') return 0
   if (status === 'planned') return 1
-  return 2 // completed vai para o final
+  return 2
 }
 
 export default function RegistroScreen() {
@@ -30,6 +30,10 @@ export default function RegistroScreen() {
   const [filter, setFilter] = useState<Filter>('todos')
   const [showModal, setShowModal] = useState(false)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => {
     if (transactions.length > 0) markOverdue()
@@ -48,8 +52,12 @@ export default function RegistroScreen() {
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
+  const hasActiveSearch = search.trim() !== '' || dateFrom !== '' || dateTo !== ''
+
   const filtered = useMemo(() => {
     let txs = [...transactions]
+
+    // Filtro de status/tipo
     if (filter === 'completed') txs = txs.filter(t => t.status === 'completed')
     else if (filter === 'planned') txs = txs.filter(t => t.status === 'planned')
     else if (filter === 'overdue') txs = txs.filter(t => t.status === 'overdue')
@@ -57,21 +65,37 @@ export default function RegistroScreen() {
     else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
     else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
 
-    // Ordena: atrasados → planejados → realizados, depois por data
+    // Filtro de busca por texto
+    if (search.trim()) {
+      const q = search.trim().toLowerCase()
+      txs = txs.filter(t =>
+        t.description.toLowerCase().includes(q) ||
+        (t.group_ref || '').toLowerCase().includes(q) ||
+        CAT_LABELS[t.category]?.toLowerCase().includes(q) ||
+        String(t.amount).includes(q) ||
+        t.date.includes(q) ||
+        (t.account?.name || '').toLowerCase().includes(q)
+      )
+    }
+
+    // Filtro de período
+    if (dateFrom) txs = txs.filter(t => t.date >= dateFrom)
+    if (dateTo) txs = txs.filter(t => t.date <= dateTo)
+
+    // Ordenação: atrasados → planejados → realizados, depois por data
     return txs.sort((a, b) => {
       const pa = statusPriority(a.status)
       const pb = statusPriority(b.status)
       if (pa !== pb) return pa - pb
       return a.date.localeCompare(b.date)
     })
-  }, [transactions, filter])
+  }, [transactions, filter, search, dateFrom, dateTo])
 
   const thisMonthTxs = transactions.filter(t => t.date.startsWith(thisMonth))
   const income = thisMonthTxs.filter(t => t.type === 'income' && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
   const expense = thisMonthTxs.filter(t => t.type === 'expense' && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
   const result = income - expense
 
-  // Agrupa por mês mantendo a ordem já definida acima
   const groups: Record<string, Transaction[]> = {}
   filtered.forEach(t => {
     const m = t.date.substring(0, 7)
@@ -79,7 +103,6 @@ export default function RegistroScreen() {
     groups[m].push(t)
   })
 
-  // Ordena os meses: meses com pendências primeiro, depois por data
   const sortedMonths = Object.keys(groups).sort((a, b) => {
     const aHasPending = groups[a].some(t => t.status !== 'completed')
     const bHasPending = groups[b].some(t => t.status !== 'completed')
@@ -88,8 +111,16 @@ export default function RegistroScreen() {
     return a.localeCompare(b)
   })
 
+  function clearSearch() {
+    setSearch('')
+    setDateFrom('')
+    setDateTo('')
+  }
+
   return (
     <div className="relative pb-20">
+
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-1.5 p-4 pb-3">
         {[
           { label: 'Entradas', value: income, color: '#6dd400' },
@@ -105,7 +136,8 @@ export default function RegistroScreen() {
         ))}
       </div>
 
-      <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-none">
+      {/* Filtros de status */}
+      <div className="flex gap-1.5 px-4 pb-2 overflow-x-auto scrollbar-none">
         {FILTERS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)}
             className="whitespace-nowrap text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all flex-shrink-0"
@@ -119,6 +151,87 @@ export default function RegistroScreen() {
         ))}
       </div>
 
+      {/* Barra de busca */}
+      <div className="px-4 pb-3">
+        <button
+          onClick={() => { setShowSearch(!showSearch); if (showSearch) clearSearch() }}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors"
+          style={{
+            background: hasActiveSearch ? 'rgba(109,212,0,0.08)' : '#1c2a1f',
+            borderColor: hasActiveSearch ? 'rgba(109,212,0,0.3)' : 'rgba(109,212,0,0.12)',
+            color: hasActiveSearch ? '#6dd400' : '#7ab070',
+          }}>
+          <span style={{ fontSize: 14 }}>🔍</span>
+          <span className="flex-1 text-left text-[12px]">
+            {hasActiveSearch
+              ? `Filtrando: ${[search && `"${search}"`, dateFrom && `de ${dateFrom}`, dateTo && `até ${dateTo}`].filter(Boolean).join(' · ')}`
+              : 'Buscar e filtrar por período...'}
+          </span>
+          {hasActiveSearch && (
+            <span onClick={e => { e.stopPropagation(); clearSearch(); setShowSearch(false) }}
+              className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+              style={{ background: 'rgba(255,107,107,0.15)', color: '#ff6b6b' }}>
+              ✕ Limpar
+            </span>
+          )}
+          <span style={{ fontSize: 10, color: '#4a6844' }}>{showSearch ? '▲' : '▼'}</span>
+        </button>
+
+        {showSearch && (
+          <div className="mt-2 p-3 rounded-xl border" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.15)' }}>
+            {/* Busca por texto */}
+            <div className="mb-3">
+              <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
+                Buscar (descrição, categoria, conta, valor, grupo)
+              </label>
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Ex: iPhone, Academia, 650..."
+                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
+              />
+            </div>
+
+            {/* Período */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
+                  Data inicial
+                </label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
+                  Data final
+                </label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={e => setDateTo(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
+                />
+              </div>
+            </div>
+
+            {/* Resultado da busca */}
+            {hasActiveSearch && (
+              <div className="mt-2 text-[11px] text-center" style={{ color: '#7ab070' }}>
+                {filtered.length} lançamento{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Lista */}
       <div className="px-4">
         {sortedMonths.map(month => {
           const [y, m] = month.split('-')
@@ -128,7 +241,12 @@ export default function RegistroScreen() {
               <div className="text-[10px] font-bold uppercase tracking-widest py-3 border-t flex items-center gap-2"
                 style={{ color: hasPending ? '#ffc04d' : '#6a9060', borderColor: 'rgba(109,212,0,0.12)' }}>
                 {MONTH_NAMES[parseInt(m) - 1]} {y}
-                {hasPending && <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(255,192,77,0.15)', color: '#ffc04d' }}>pendências</span>}
+                {hasPending && (
+                  <span className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: 'rgba(255,192,77,0.15)', color: '#ffc04d' }}>
+                    pendências
+                  </span>
+                )}
               </div>
               {groups[month].map(tx => (
                 <TxItem key={tx.id} tx={tx} onEdit={() => setEditingTx(tx)} />
@@ -137,7 +255,9 @@ export default function RegistroScreen() {
           )
         })}
         {filtered.length === 0 && (
-          <div className="text-center py-16 text-sm" style={{ color: '#4a6844' }}>Nenhum lançamento encontrado</div>
+          <div className="text-center py-16 text-sm" style={{ color: '#4a6844' }}>
+            {hasActiveSearch ? 'Nenhum resultado para esta busca' : 'Nenhum lançamento encontrado'}
+          </div>
         )}
       </div>
 
@@ -179,7 +299,6 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
 
   async function handleMarkCompleted() {
     if (tx.status === 'overdue') {
-      // Abre seletor de data antes de marcar como realizado
       setShowPaymentDate(true)
       return
     }
@@ -190,10 +309,7 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
     if (loading) return
     setLoading(true)
     const newDesc = `${tx.description} · Pago em ${format(new Date(paymentDate + 'T12:00:00'), 'dd/MM/yyyy')}`
-    await supabase.from('transactions').update({
-      status: 'completed',
-      description: newDesc,
-    } as any).eq('id', tx.id)
+    await supabase.from('transactions').update({ status: 'completed', description: newDesc } as any).eq('id', tx.id)
     await loadTransactions()
     await loadAccounts()
     setShowPaymentDate(false)
@@ -257,7 +373,6 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
         </div>
       </div>
 
-      {/* Seletor de data de pagamento para atrasados */}
       {showPaymentDate && (
         <div className="mx-1 mt-1 mb-1 p-3 rounded-xl border" style={{ background: '#223026', borderColor: 'rgba(255,192,77,0.25)' }}>
           <div className="text-xs font-semibold mb-2" style={{ color: '#ffc04d' }}>
@@ -268,15 +383,13 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
               className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
               style={{ background: '#1c2a1f', border: '1px solid rgba(255,192,77,0.3)', color: '#e8f5e2' }} />
             <button onClick={confirmPaymentDate} disabled={loading}
-              className="px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition-opacity hover:opacity-90"
+              className="px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50 hover:opacity-90"
               style={{ background: '#6dd400', color: '#0f1f12' }}>
-              {loading ? '...' : 'Confirmar'}
+              {loading ? '...' : 'OK'}
             </button>
             <button onClick={() => setShowPaymentDate(false)}
               className="px-3 py-2 rounded-lg text-sm border"
-              style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>
-              ✕
-            </button>
+              style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>✕</button>
           </div>
         </div>
       )}
