@@ -51,7 +51,18 @@ export default function RegistroScreen() {
     else if (filter === 'income') txs = txs.filter(t => t.type === 'income')
     else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
     else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
-    return txs.sort((a, b) => a.date.localeCompare(b.date))
+    return txs.sort((a, b) => {
+      // Realizados vão para o final
+      const aCompleted = a.status === 'completed' ? 1 : 0
+      const bCompleted = b.status === 'completed' ? 1 : 0
+      if (aCompleted !== bCompleted) return aCompleted - bCompleted
+      // Atrasados vêm antes de planejados
+      const aPriority = a.status === 'overdue' ? 0 : a.status === 'planned' ? 1 : 2
+      const bPriority = b.status === 'overdue' ? 0 : b.status === 'planned' ? 1 : 2
+      if (aPriority !== bPriority) return aPriority - bPriority
+      // Por data crescente dentro do mesmo status
+      return a.date.localeCompare(b.date)
+    })
   }, [transactions, filter])
 
   const thisMonthTxs = transactions.filter(t => t.date.startsWith(thisMonth))
