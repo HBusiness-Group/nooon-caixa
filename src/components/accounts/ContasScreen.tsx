@@ -226,9 +226,9 @@ export default function ContasScreen() {
               <div className={`font-['JetBrains_Mono'] text-xl font-bold ${bal < 0 ? 'text-[#ff5757]' : 'text-[#6dd400]'}`}>
                 {fmtCurrency(bal)}
               </div>
-              {(acc as any).balance_date && (
+              {acc.balance_date && (
                 <div className="text-[9px] text-[#3a5030] mt-0.5">
-                  Saldo inicial registrado em {new Date((acc as any).balance_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  Saldo inicial registrado em {new Date(acc.balance_date + 'T12:00:00').toLocaleDateString('pt-BR')}
                 </div>
               )}
             </div>
@@ -264,7 +264,7 @@ export default function ContasScreen() {
 
             <div className="flex gap-2">
               <button
-                onClick={() => { setEditingId(acc.id); setEditSaldo(String(acc.initial_balance)); setEditDate((acc as any).balance_date || '') }}
+                onClick={() => { setEditingId(acc.id); setEditSaldo(String(acc.initial_balance)); setEditDate(acc.balance_date || '') }}
                 className="text-xs text-[#40b4ff] border border-[rgba(64,180,255,0.15)] rounded-lg px-3 py-1.5 hover:bg-[rgba(64,180,255,0.07)] transition-colors">
                 ✏ Editar saldo
               </button>
