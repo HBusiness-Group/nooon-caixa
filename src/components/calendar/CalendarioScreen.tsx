@@ -4,8 +4,6 @@ import { useAppStore } from '@/store/useAppStore'
 import { MONTH_NAMES, DOW_NAMES, fmtCurrencyK, fmtCurrency } from '@/lib/utils'
 import type { Transaction } from '@/types/database'
 
-const DISPLAY_CATS = ['business', 'acquisition', 'loan'] as const
-
 export default function CalendarioScreen() {
   const { transactions, accounts, calendarMonth, calendarYear, setCalendarMonth } = useAppStore()
 
@@ -32,45 +30,60 @@ export default function CalendarioScreen() {
   }, [transactions, days, monthStr])
 
   const saldoByDay = useMemo(() => {
-    // Saldo base = soma dos saldos atuais de todas as contas no dia de hoje
     const todayStr = new Date().toISOString().split('T')[0]
+
+    // Saldo base de cada conta, ancorado na balance_date
+    // Para cada dia, soma: initial_balance de contas cuja balance_date <= ds
+    // + transações realizadas até ds
+    // + transações planejadas entre balance_date e ds (para dias futuros)
+
+    // Estratégia: partir do saldo atual real (já calculado pela view) e projetar
     const totalAtual = accounts.reduce((s, a) => s + (a.current_balance ?? a.initial_balance ?? 0), 0)
 
-    // Calcula o saldo projetado para cada dia do mês a partir do saldo atual de hoje
-    // Para dias passados: subtrai as transações futuras (que ainda não aconteceram)
-    // Para dias futuros: adiciona as transações planejadas
-    // Estratégia: partir do saldo atual e andar para frente/trás
-
-    // Primeiro, monta todas as transações do mês ordenadas por data
     const allMonthTxs = transactions
       .filter(t => t.date.startsWith(monthStr) && t.status !== 'cancelled')
       .sort((a, b) => a.date.localeCompare(b.date))
 
-    // Calcula saldo acumulado dia a dia a partir do saldo atual
-    // Para dias antes de hoje: recalcula subtraindo o que foi realizado depois de hoje
-    // Estratégia mais simples: saldo do dia = saldo atual +/- transações entre esse dia e hoje
+    // Contribuição de contas com balance_date dentro do mês atual (novas contas)
+    // — já está embutida no totalAtual via initial_balance, mas precisamos saber
+    //   a partir de qual dia cada conta "entra" no calendário
+    const accountEntries = accounts
+      .filter(a => (a as any).balance_date && (a as any).balance_date.startsWith(monthStr))
+      .map(a => ({
+        date: (a as any).balance_date as string,
+        balance: a.initial_balance,
+      }))
 
     const map: Record<string, number> = {}
 
     days.forEach(({ ds }) => {
-      // Para cada dia, calcula a diferença entre esse dia e hoje
       let delta = 0
+
       if (ds > todayStr) {
-        // Dia futuro: adiciona transações planejadas/realizadas entre hoje+1 e esse dia
+        // Futuro: aplica transações planejadas/realizadas após hoje até ds
         allMonthTxs
           .filter(t => t.date > todayStr && t.date <= ds)
           .forEach(t => { delta += t.type === 'income' ? t.amount : -t.amount })
       } else if (ds < todayStr) {
-        // Dia passado: subtrai transações realizadas entre esse dia+1 e hoje
+        // Passado: remove o efeito de transações realizadas entre ds+1 e hoje
         allMonthTxs
           .filter(t => t.date > ds && t.date <= todayStr && t.status === 'completed')
           .forEach(t => { delta += t.type === 'income' ? -t.amount : t.amount })
       }
+
+      // Contas criadas no mês: só existem a partir da balance_date
+      // Para dias antes da balance_date, subtrai o initial_balance dessa conta
+      accountEntries.forEach(entry => {
+        if (ds < entry.date) {
+          delta -= entry.balance
+        }
+      })
+
       map[ds] = totalAtual + delta
     })
 
     return map
-  }, [txByDay, days, accounts, transactions, monthStr])
+  }, [days, accounts, transactions, monthStr])
 
   const minSaldo = Math.min(...Object.values(saldoByDay))
   const minDay = Object.keys(saldoByDay).find(d => saldoByDay[d] === minSaldo)
@@ -100,6 +113,18 @@ export default function CalendarioScreen() {
     setCalendarMonth(m, y)
   }
 
+  // Formata data dd/mm em verde neon
+  function fmtDay(d: number, month: number) {
+    return `${String(d).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}`
+  }
+
+  const ROWS = [
+    { key: 'saldo',     label: 'SALDO' },
+    { key: 'overdue',   label: 'ATRASADOS' },
+    { key: 'income',    label: 'ENTRADA' },
+    { key: 'expense',   label: 'SAÍDA' },
+  ] as const
+
   return (
     <div className="pb-6">
       <div className="flex items-center justify-between px-4 py-3">
@@ -124,11 +149,12 @@ export default function CalendarioScreen() {
         </div>
       )}
 
+      {/* Legenda */}
       <div className="flex gap-3 px-4 pb-2 flex-wrap">
         {[
-          { color: '#6dd400', label: 'Entrada' },
-          { color: '#ff5757', label: 'Saída real' },
+          { color: '#6dd400', label: 'Realizado' },
           { color: '#ffb340', label: 'Planejado' },
+          { color: '#ff5757', label: 'Atrasado' },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1.5 text-[10px] text-[#4a6644]">
             <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />
@@ -139,9 +165,10 @@ export default function CalendarioScreen() {
 
       <div className="px-4 overflow-x-auto">
         <div style={{ minWidth: 560 }}>
-          <div className="grid gap-[2px] mb-1" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
+          {/* Header dias da semana */}
+          <div className="grid gap-[2px] mb-1" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
             <div />
-            {DOW_NAMES.map(d => (
+            {['DOM','SEG','TER','QUA','QUI','SEX','SÁB'].map(d => (
               <div key={d} className="text-[9px] font-bold text-[#3a5030] text-center uppercase tracking-wider py-1">{d}</div>
             ))}
           </div>
@@ -150,42 +177,83 @@ export default function CalendarioScreen() {
             <div key={wi}>
               <div className="text-[9px] font-bold text-[#3a5030] uppercase tracking-wider py-2">Semana {wi + 1}</div>
 
-              <div className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                <div className="text-[9px] font-bold text-[#3a5030] flex items-center uppercase tracking-wider">Saldo</div>
-                {week.map((day, i) => {
-                  if (!day) return <div key={i} />
-                  const s = saldoByDay[day.ds] ?? 0
-                  const cls = s > 0
-                    ? 'bg-[rgba(109,212,0,0.1)] text-[#6dd400] border-[rgba(109,212,0,0.15)]'
-                    : s > -500
-                    ? 'bg-[rgba(255,179,64,0.08)] text-[#ffb340] border-[rgba(255,179,64,0.15)]'
-                    : 'bg-[rgba(255,87,87,0.08)] text-[#ff5757] border-[rgba(255,87,87,0.2)]'
-                  const todayCls = day.ds === today ? '!border-[#6dd400]' : ''
-                  return (
-                    <div key={i} className={`${cls} ${todayCls} border rounded-[4px] px-1 py-1 text-center font-['JetBrains_Mono'] text-[8px] font-semibold`}>
-                      {fmtCurrencyK(s)}
-                    </div>
-                  )
-                })}
-              </div>
+              {ROWS.map(row => (
+                <div key={row.key} className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
+                  {/* Label da linha */}
+                  <div className="flex items-center">
+                    <span className={`text-[9px] font-bold uppercase tracking-wider ${
+                      row.key === 'saldo'   ? 'text-[#3a5030]' :
+                      row.key === 'overdue' ? 'text-[#ff5757]' :
+                      row.key === 'income'  ? 'text-[#6dd400]' :
+                                              'text-[#ff5757]'
+                    }`}>{row.label}</span>
+                  </div>
 
-              {DISPLAY_CATS.map(cat => (
-                <div key={cat} className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '80px repeat(7, 1fr)' }}>
-                  <div className="text-[10px] text-[#8aab80] flex items-center capitalize pl-0.5">{cat}</div>
                   {week.map((day, i) => {
                     if (!day) return <div key={i} />
-                    const catTxs = (txByDay[day.ds] || []).filter(t => t.category === cat)
                     const isToday = day.ds === today
-                    return (
-                      <div key={i} className={`min-h-[36px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
-                        <div className="text-[8px] text-[#3a5030] text-center leading-none mb-[1px]">{day.d}</div>
-                        {catTxs.slice(0, 2).map((t, ti) => {
-                          const ec = t.type === 'income' ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]'
-                            : t.status === 'planned' || t.status === 'overdue' ? 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
-                            : 'bg-[rgba(255,87,87,0.1)] text-[#ff5757]'
-                          return (
-                            <div key={ti} className={`${ec} rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]`}>
+
+                    // ── SALDO ──
+                    if (row.key === 'saldo') {
+                      const s = saldoByDay[day.ds] ?? 0
+                      const cls = s > 0
+                        ? 'bg-[rgba(109,212,0,0.1)] text-[#6dd400] border-[rgba(109,212,0,0.15)]'
+                        : s > -500
+                        ? 'bg-[rgba(255,179,64,0.08)] text-[#ffb340] border-[rgba(255,179,64,0.15)]'
+                        : 'bg-[rgba(255,87,87,0.08)] text-[#ff5757] border-[rgba(255,87,87,0.2)]'
+                      return (
+                        <div key={i} className={`${cls} ${isToday ? '!border-[#6dd400] border-[1.5px]' : ''} border rounded-[4px] px-1 py-1 text-center`}>
+                          {/* Data dd/mm em verde neon */}
+                          <div style={{ color: '#6dd400', fontSize: 7, fontWeight: 700, lineHeight: 1, marginBottom: 1 }}>
+                            {fmtDay(day.d, calendarMonth)}
+                          </div>
+                          <div className="font-['JetBrains_Mono'] text-[8px] font-semibold">
+                            {fmtCurrencyK(s)}
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    // ── ATRASADOS ──
+                    if (row.key === 'overdue') {
+                      const overdueTxs = (txByDay[day.ds] || []).filter(t => t.status === 'overdue')
+                      return (
+                        <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
+                          {overdueTxs.slice(0, 2).map((t, ti) => (
+                            <div key={ti} className="bg-[rgba(255,87,87,0.12)] text-[#ff5757] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
                               {t.type === 'income' ? '+' : '-'}{fmtCurrencyK(t.amount)}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    }
+
+                    // ── ENTRADA ──
+                    if (row.key === 'income') {
+                      const incomeTxs = (txByDay[day.ds] || []).filter(t => t.type === 'income')
+                      return (
+                        <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
+                          {incomeTxs.slice(0, 2).map((t, ti) => {
+                            const color = t.status === 'completed' ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]' : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
+                            return (
+                              <div key={ti} className={`${color} rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]`}>
+                                +{fmtCurrencyK(t.amount)}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    }
+
+                    // ── SAÍDA ──
+                    const expenseTxs = (txByDay[day.ds] || []).filter(t => t.type === 'expense' && t.status !== 'overdue')
+                    return (
+                      <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
+                        {expenseTxs.slice(0, 2).map((t, ti) => {
+                          const color = t.status === 'completed' ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]' : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
+                          return (
+                            <div key={ti} className={`${color} rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]`}>
+                              -{fmtCurrencyK(t.amount)}
                             </div>
                           )
                         })}
