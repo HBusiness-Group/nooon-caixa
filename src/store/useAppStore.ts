@@ -9,6 +9,7 @@ export interface Account {
   name: string
   type: string
   initial_balance: number
+  balance_date?: string   // ← adicionar esta linha
   color: string
   is_active: boolean
   created_at: string
