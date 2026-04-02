@@ -53,46 +53,40 @@ export default function Topbar() {
           className="absolute top-14 right-4 z-50 rounded-xl shadow-xl border overflow-hidden"
           style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)', minWidth: 220 }}
         >
-          {/* (a) Saldo em Contas — hover expande lista */}
-          <div
-            className="relative group"
-            onMouseEnter={() => setShowBalances(true)}
-            onMouseLeave={() => setShowBalances(false)}
-          >
-            <div className="flex items-center justify-between px-4 py-2.5 cursor-default hover:bg-[#223026] transition-colors">
-              <div className="flex items-center gap-2">
-                <span style={{ fontSize: 13 }}>🏦</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#e8f5e2' }}>Saldo em Contas</span>
-              </div>
-              <span style={{ fontSize: 10, color: '#6a9060' }}>▸</span>
-            </div>
-
-            {/* Submenu de contas */}
-            {showBalances && (
-              <div
-                className="absolute right-full top-0 rounded-xl border shadow-xl p-2"
-                style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)', minWidth: 210 }}
-              >
-                {accounts.map(a => (
-                  <button
-                    key={a.id}
-                    onClick={() => { setCurrentAccount(a.id); setShowMenu(false); setShowBalances(false) }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[#223026]"
-                    style={{ background: a.id === currentAccountId ? 'rgba(109,212,0,0.08)' : 'transparent' }}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: a.color }} />
-                    <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f5e2' }} className="truncate">{a.name}</div>
-                      <div style={{ fontSize: 10, color: '#6a9060' }}>{a.type}</div>
-                    </div>
-                    <div className="font-['JetBrains_Mono'] font-semibold" style={{ fontSize: 12, color: (a.current_balance ?? 0) < 0 ? '#ff6b6b' : '#6dd400' }}>
-                      {fmtCurrency(a.current_balance ?? a.initial_balance)}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+      {/* (a) Saldo em Contas — submenu via CSS group-hover */}
+      <div className="relative group">
+        <div className="flex items-center justify-between px-4 py-2.5 cursor-default hover:bg-[#223026] transition-colors">
+          <div className="flex items-center gap-2">
+            <span style={{ fontSize: 13 }}>🏦</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#e8f5e2' }}>Saldo em Contas</span>
           </div>
+          <span style={{ fontSize: 10, color: '#6a9060' }}>▸</span>
+        </div>
+      
+        {/* Submenu — visível só no hover do grupo pai */}
+        <div
+          className="absolute right-full top-0 rounded-xl border shadow-xl p-2 hidden group-hover:block"
+          style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)', minWidth: 210, zIndex: 60 }}
+        >
+          {accounts.map(a => (
+            <button
+              key={a.id}
+              onClick={() => { setCurrentAccount(a.id); setShowMenu(false) }}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors hover:bg-[#223026]"
+              style={{ background: a.id === currentAccountId ? 'rgba(109,212,0,0.08)' : 'transparent' }}
+            >
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: a.color }} />
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#e8f5e2' }} className="truncate">{a.name}</div>
+                <div style={{ fontSize: 10, color: '#6a9060' }}>{a.type}</div>
+              </div>
+              <div className="font-['JetBrains_Mono'] font-semibold" style={{ fontSize: 12, color: (a.current_balance ?? 0) < 0 ? '#ff6b6b' : '#6dd400' }}>
+                {fmtCurrency(a.current_balance ?? a.initial_balance)}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
 
           {/* Divisor */}
           <div style={{ borderTop: '1px solid rgba(109,212,0,0.1)', margin: '2px 0' }} />
@@ -130,10 +124,10 @@ export default function Topbar() {
           {/* (c) Sair */}
           <button
             onClick={async () => { await supabase.auth.signOut(); setShowMenu(false) }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-[#2a1f1f]"
+            className="w-full flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-[#223026]"
           >
             <span style={{ fontSize: 12 }}>🚪</span>
-            <span style={{ fontSize: 13, fontWeight: 500, color: '#ff6b6b' }}>Sair do NOOON Caixa</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: '#6dd400' }}>Sair do NOOON Caixa</span>
           </button>
         </div>
       )}
