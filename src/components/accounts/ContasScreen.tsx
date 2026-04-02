@@ -11,10 +11,11 @@ const ACCOUNT_ICONS: Record<string, string> = {
 }
 
 export default function ContasScreen() {
-  const { accounts, addAccount, deleteAccount, loadAccounts, userId } = useAppStore()
+  const { accounts, addAccount, deleteAccount, loadAccounts, userId, transactions } = useAppStore()
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editSaldo, setEditSaldo] = useState('')
+  const [editDate, setEditDate] = useState('')
   const [showTransfer, setShowTransfer] = useState(false)
   const [tfFrom, setTfFrom] = useState('')
   const [tfTo, setTfTo] = useState('')
@@ -23,16 +24,34 @@ export default function ContasScreen() {
   const [name, setName] = useState('')
   const [type, setType] = useState<AccountType>('checking')
   const [saldo, setSaldo] = useState('')
+  const [balanceDate, setBalanceDate] = useState(new Date().toISOString().split('T')[0])
   const [color, setColor] = useState(COLORS[0])
   const [loading, setLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const totalSaldo = accounts.reduce((s, a) => s + (a.current_balance ?? a.initial_balance), 0)
+
+  // Verifica se conta tem movimentos (realizados ou planejados)
+  function accountHasMovements(accountId: string): boolean {
+    return transactions.some(
+      t => t.account_id === accountId &&
+        (t.status === 'completed' || t.status === 'planned' || t.status === 'overdue')
+    )
+  }
 
   async function handleSave() {
     if (!name.trim()) return
     setLoading(true)
-    await addAccount({ name: name.trim(), type, initial_balance: parseFloat(saldo) || 0, color, is_active: true })
+    await addAccount({
+      name: name.trim(),
+      type,
+      initial_balance: parseFloat(saldo) || 0,
+      color,
+      is_active: true,
+      balance_date: balanceDate,
+    } as any)
     setName(''); setSaldo(''); setType('checking'); setColor(COLORS[0])
+    setBalanceDate(new Date().toISOString().split('T')[0])
     setShowForm(false)
     setLoading(false)
   }
@@ -41,11 +60,24 @@ export default function ContasScreen() {
     const val = parseFloat(editSaldo)
     if (isNaN(val)) return
     setLoading(true)
-    await supabase.from('accounts').update({ initial_balance: val } as any).eq('id', id)
+    await supabase.from('accounts').update({
+      initial_balance: val,
+      balance_date: editDate || new Date().toISOString().split('T')[0],
+    } as any).eq('id', id)
     await loadAccounts()
     setEditingId(null)
     setEditSaldo('')
+    setEditDate('')
     setLoading(false)
+  }
+
+  async function handleDelete(id: string) {
+    setDeleteError(null)
+    if (accountHasMovements(id)) {
+      setDeleteError(id)
+      return
+    }
+    await deleteAccount(id)
   }
 
   async function handleTransfer() {
@@ -133,7 +165,6 @@ export default function ContasScreen() {
               </select>
             </div>
           </div>
-
           <div className="mb-3">
             <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-1.5">Valor</label>
             <div className="flex gap-2">
@@ -156,7 +187,6 @@ export default function ContasScreen() {
               </div>
             )}
           </div>
-
           <button onClick={handleTransfer} disabled={loading || !tfFrom || !tfTo || (!tfAmount && !tfAll)}
             className="w-full bg-[#40b4ff] text-[#0d1410] py-3 rounded-xl font-['Barlow_Condensed'] font-black text-sm uppercase tracking-wider disabled:opacity-40 hover:opacity-90 transition-opacity">
             {loading ? 'Transferindo...' : 'Confirmar transferência'}
@@ -175,6 +205,8 @@ export default function ContasScreen() {
       {accounts.map(acc => {
         const bal = acc.current_balance ?? acc.initial_balance
         const isEditing = editingId === acc.id
+        const hasMovements = accountHasMovements(acc.id)
+        const showDeleteError = deleteError === acc.id
         return (
           <div key={acc.id} className="bg-[#172010] border border-[rgba(109,212,0,0.08)] rounded-2xl p-4 mb-3 hover:border-[rgba(109,212,0,0.15)] transition-colors">
             <div className="flex items-center gap-3 mb-3">
@@ -194,14 +226,24 @@ export default function ContasScreen() {
               <div className={`font-['JetBrains_Mono'] text-xl font-bold ${bal < 0 ? 'text-[#ff5757]' : 'text-[#6dd400]'}`}>
                 {fmtCurrency(bal)}
               </div>
+              {(acc as any).balance_date && (
+                <div className="text-[9px] text-[#3a5030] mt-0.5">
+                  Saldo inicial registrado em {new Date((acc as any).balance_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </div>
+              )}
             </div>
 
             {isEditing && (
               <div className="mb-3">
                 <div className="text-[9px] font-bold text-[#3a5030] uppercase tracking-widest mb-1.5">Novo saldo inicial (R$)</div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 mb-2">
                   <input type="number" value={editSaldo} onChange={e => setEditSaldo(e.target.value)}
                     placeholder={String(acc.initial_balance)}
+                    className="flex-1 bg-[#1e2a18] border border-[rgba(109,212,0,0.2)] rounded-lg px-3 py-2 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400]" />
+                </div>
+                <div className="text-[9px] font-bold text-[#3a5030] uppercase tracking-widest mb-1.5">Data de referência</div>
+                <div className="flex gap-2">
+                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
                     className="flex-1 bg-[#1e2a18] border border-[rgba(109,212,0,0.2)] rounded-lg px-3 py-2 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400]" />
                   <button onClick={() => handleEditSaldo(acc.id)} disabled={loading}
                     className="px-4 py-2 bg-[#6dd400] text-[#0d1410] rounded-lg text-sm font-bold disabled:opacity-50">
@@ -214,13 +256,22 @@ export default function ContasScreen() {
               </div>
             )}
 
+            {showDeleteError && (
+              <div className="mb-3 bg-[rgba(255,87,87,0.07)] border border-[rgba(255,87,87,0.2)] rounded-xl px-3 py-2 text-xs text-[#ffaaaa]">
+                ⚠ Esta conta possui registros e não pode ser excluída.
+              </div>
+            )}
+
             <div className="flex gap-2">
-              <button onClick={() => { setEditingId(acc.id); setEditSaldo(String(acc.initial_balance)) }}
+              <button
+                onClick={() => { setEditingId(acc.id); setEditSaldo(String(acc.initial_balance)); setEditDate((acc as any).balance_date || '') }}
                 className="text-xs text-[#40b4ff] border border-[rgba(64,180,255,0.15)] rounded-lg px-3 py-1.5 hover:bg-[rgba(64,180,255,0.07)] transition-colors">
                 ✏ Editar saldo
               </button>
-              <button onClick={() => deleteAccount(acc.id)}
-                className="text-xs text-[#ff5757] border border-[rgba(255,87,87,0.15)] rounded-lg px-3 py-1.5 hover:bg-[rgba(255,87,87,0.07)] transition-colors">
+              <button
+                onClick={() => handleDelete(acc.id)}
+                className={`text-xs border rounded-lg px-3 py-1.5 transition-colors ${hasMovements ? 'text-[#4a6644] border-[rgba(255,255,255,0.06)] cursor-not-allowed opacity-50' : 'text-[#ff5757] border-[rgba(255,87,87,0.15)] hover:bg-[rgba(255,87,87,0.07)]'}`}
+                title={hasMovements ? 'Conta com registros não pode ser excluída' : 'Excluir conta'}>
                 ✕ Excluir
               </button>
             </div>
@@ -254,6 +305,11 @@ export default function ContasScreen() {
               <input type="number" value={saldo} onChange={e => setSaldo(e.target.value)} placeholder="0,00"
                 className="w-full bg-[#1e2a18] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors placeholder:text-[#3a5030]" />
             </div>
+          </div>
+          <div className="mb-3">
+            <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-1.5">Data de referência do saldo</label>
+            <input type="date" value={balanceDate} onChange={e => setBalanceDate(e.target.value)}
+              className="w-full bg-[#1e2a18] border border-[rgba(109,212,0,0.15)] rounded-lg px-3 py-2.5 text-[#e8f0e4] text-sm outline-none focus:border-[#6dd400] transition-colors" />
           </div>
           <div className="mb-4">
             <label className="block text-[10px] font-bold text-[#4a6644] uppercase tracking-widest mb-2">Cor</label>
