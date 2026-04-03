@@ -11,6 +11,24 @@ export function fmtCurrency(value: number): string {
   })
 }
 
+// Formato sem R$, sinal no final: "7.039,68 +" ou "441,32 -"
+export function fmtValue(amount: number, type: 'income' | 'expense'): string {
+  const formatted = Math.abs(amount).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return type === 'income' ? `${formatted} +` : `${formatted} -`
+}
+
+// Formato compacto sem R$, sinal no final: "7,3k +" ou "18 -"
+export function fmtValueK(amount: number, type: 'income' | 'expense'): string {
+  const abs = Math.abs(amount)
+  const formatted = abs >= 1000
+    ? (abs / 1000).toFixed(1).replace('.', ',') + 'k'
+    : abs.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return type === 'income' ? `${formatted} +` : `${formatted} -`
+}
+
 export function fmtCurrencyK(value: number): string {
   const abs = Math.abs(value)
   if (abs >= 1000) return 'R$' + (value / 1000).toFixed(1) + 'k'
