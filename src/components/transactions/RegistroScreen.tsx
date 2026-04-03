@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { CAT_ICONS, CAT_LABELS, fmtCurrency, MONTH_NAMES } from '@/lib/utils'
+import { CAT_ICONS, CAT_LABELS, fmtCurrency, fmtValue, MONTH_NAMES } from '@/lib/utils'
 import TransactionModal from './TransactionModal'
 import type { Transaction } from '@/store/useAppStore'
 import { supabase } from '@/lib/supabase'
@@ -57,7 +57,6 @@ export default function RegistroScreen() {
   const filtered = useMemo(() => {
     let txs = [...transactions]
 
-    // Filtro de status/tipo
     if (filter === 'completed') txs = txs.filter(t => t.status === 'completed')
     else if (filter === 'planned') txs = txs.filter(t => t.status === 'planned')
     else if (filter === 'overdue') txs = txs.filter(t => t.status === 'overdue')
@@ -65,7 +64,6 @@ export default function RegistroScreen() {
     else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
     else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
 
-    // Filtro de busca por texto
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       txs = txs.filter(t =>
@@ -78,11 +76,9 @@ export default function RegistroScreen() {
       )
     }
 
-    // Filtro de período
     if (dateFrom) txs = txs.filter(t => t.date >= dateFrom)
     if (dateTo) txs = txs.filter(t => t.date <= dateTo)
 
-    // Ordenação: atrasados → planejados → realizados, depois por data
     return txs.sort((a, b) => {
       const pa = statusPriority(a.status)
       const pb = statusPriority(b.status)
@@ -120,7 +116,7 @@ export default function RegistroScreen() {
   return (
     <div className="relative pb-20">
 
-      {/* Stats */}
+      {/* Stats — mantém R$ nos cabeçalhos */}
       <div className="grid grid-cols-3 gap-1.5 p-4 pb-3">
         {[
           { label: 'Entradas', value: income, color: '#6dd400' },
@@ -178,60 +174,39 @@ export default function RegistroScreen() {
         </button>
 
         {showSearch && (
-          <div className="mt-2 p-3 rounded-xl border" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.15)' }}>
-            {/* Busca por texto */}
-            <div className="mb-3">
-              <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
-                Buscar (descrição, categoria, conta, valor, grupo)
-              </label>
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Ex: iPhone, Academia, 650..."
-                className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
-              />
-            </div>
-
-            {/* Período */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
-                  Data inicial
-                </label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={e => setDateFrom(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
-                />
+          <div className="mt-2 p-3 rounded-xl border" style={{ background: '#172010', borderColor: 'rgba(109,212,0,0.15)' }}>
+            <input
+              type="text"
+              placeholder="Descrição, categoria, conta, valor..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm outline-none mb-2"
+              style={{ background: '#1c2a1f', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
+            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <div className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#4a6844' }}>De</div>
+                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: '#1c2a1f', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }} />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
-                  Data final
-                </label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={e => setDateTo(e.target.value)}
-                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
-                  style={{ background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }}
-                />
+              <div className="flex-1">
+                <div className="text-[9px] font-bold uppercase tracking-wider mb-1" style={{ color: '#4a6844' }}>Até</div>
+                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: '#1c2a1f', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }} />
               </div>
             </div>
-
-            {/* Resultado da busca */}
-            {hasActiveSearch && (
-              <div className="mt-2 text-[11px] text-center" style={{ color: '#7ab070' }}>
-                {filtered.length} lançamento{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
+            {filtered.length > 0 && hasActiveSearch && (
+              <div className="text-[10px] mt-2 text-center" style={{ color: '#4a6844' }}>
+                {filtered.length} resultado{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Lista */}
+      {/* Lista agrupada por mês */}
       <div className="px-4">
         {sortedMonths.map(month => {
           const [y, m] = month.split('-')
@@ -289,12 +264,14 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   const day = tx.date.split('-')[2]
 
   const statusConfig: Record<string, { color: string; bg: string; label: string; bar: string }> = {
-    completed: { color: '#6dd400', bg: 'rgba(109,212,0,0.1)', label: 'OK', bar: '#6dd400' },
-    planned:   { color: '#ffc04d', bg: 'rgba(255,192,77,0.1)', label: 'Plan', bar: '#ffc04d' },
+    completed: { color: '#6dd400', bg: 'rgba(109,212,0,0.1)',   label: 'OK',       bar: '#6dd400' },
+    planned:   { color: '#ffc04d', bg: 'rgba(255,192,77,0.1)',  label: 'Plan',     bar: '#ffc04d' },
     overdue:   { color: '#ff6b6b', bg: 'rgba(255,107,107,0.1)', label: 'Atrasado', bar: '#ff6b6b' },
-    cancelled: { color: '#555', bg: 'rgba(100,100,100,0.1)', label: 'Cancel', bar: '#555' },
+    cancelled: { color: '#555',    bg: 'rgba(100,100,100,0.1)', label: 'Cancel',   bar: '#555'    },
   }
   const sc = statusConfig[tx.status] || statusConfig.planned
+
+  // Cor do valor: entrada = verde, saída realizada = vermelho, saída planejada/atrasada = âmbar
   const valColor = isIncome ? '#6dd400' : tx.status === 'completed' ? '#ff6b6b' : '#ffc04d'
 
   async function handleMarkCompleted() {
@@ -356,8 +333,9 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
           </div>
         </div>
         <div className="text-right flex-shrink-0">
+          {/* Valor sem R$, sinal no final */}
           <div className="font-['JetBrains_Mono'] text-[13px] font-semibold" style={{ color: valColor }}>
-            {isIncome ? '+' : '-'}{fmtCurrency(tx.amount)}
+            {fmtValue(tx.amount, tx.type)}
           </div>
           <div className="flex items-center gap-1 justify-end mt-1">
             <span className="text-[10px]" style={{ color: '#4a6844' }}>dia {day}</span>
