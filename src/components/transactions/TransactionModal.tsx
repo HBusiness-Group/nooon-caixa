@@ -155,7 +155,7 @@ export default function TransactionModal({ onClose, editTx }: Props) {
         {/* Data + Status */}
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Data planejada</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Data de Referência</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
               className={inputCls} style={inputStyle} />
           </div>
@@ -180,7 +180,7 @@ export default function TransactionModal({ onClose, editTx }: Props) {
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Grupo / Ref.</label>
+            <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Observações do Registro</label>
             <input value={groupRef} onChange={e => setGroupRef(e.target.value)} placeholder="HB MicroCred 01/12"
               className={inputCls} style={inputStyle} />
           </div>
