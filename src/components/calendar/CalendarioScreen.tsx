@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { MONTH_NAMES, DOW_NAMES, fmtCurrencyK, fmtCurrency } from '@/lib/utils'
+import { MONTH_NAMES, DOW_NAMES, fmtCurrencyK, fmtCurrency, fmtValueK } from '@/lib/utils'
 import type { Transaction } from '@/types/database'
 
 export default function CalendarioScreen() {
@@ -32,21 +32,12 @@ export default function CalendarioScreen() {
   const saldoByDay = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0]
 
-    // Saldo base de cada conta, ancorado na balance_date
-    // Para cada dia, soma: initial_balance de contas cuja balance_date <= ds
-    // + transações realizadas até ds
-    // + transações planejadas entre balance_date e ds (para dias futuros)
-
-    // Estratégia: partir do saldo atual real (já calculado pela view) e projetar
     const totalAtual = accounts.reduce((s, a) => s + (a.current_balance ?? a.initial_balance ?? 0), 0)
 
     const allMonthTxs = transactions
       .filter(t => t.date.startsWith(monthStr) && t.status !== 'cancelled')
       .sort((a, b) => a.date.localeCompare(b.date))
 
-    // Contribuição de contas com balance_date dentro do mês atual (novas contas)
-    // — já está embutida no totalAtual via initial_balance, mas precisamos saber
-    //   a partir de qual dia cada conta "entra" no calendário
     const accountEntries = accounts
       .filter(a => (a as any).balance_date && (a as any).balance_date.startsWith(monthStr))
       .map(a => ({
@@ -60,19 +51,15 @@ export default function CalendarioScreen() {
       let delta = 0
 
       if (ds > todayStr) {
-        // Futuro: aplica transações planejadas/realizadas após hoje até ds
         allMonthTxs
           .filter(t => t.date > todayStr && t.date <= ds)
           .forEach(t => { delta += t.type === 'income' ? t.amount : -t.amount })
       } else if (ds < todayStr) {
-        // Passado: remove o efeito de transações realizadas entre ds+1 e hoje
         allMonthTxs
           .filter(t => t.date > ds && t.date <= todayStr && t.status === 'completed')
           .forEach(t => { delta += t.type === 'income' ? -t.amount : t.amount })
       }
 
-      // Contas criadas no mês: só existem a partir da balance_date
-      // Para dias antes da balance_date, subtrai o initial_balance dessa conta
       accountEntries.forEach(entry => {
         if (ds < entry.date) {
           delta -= entry.balance
@@ -113,7 +100,6 @@ export default function CalendarioScreen() {
     setCalendarMonth(m, y)
   }
 
-  // Formata data dd/mm em verde neon
   function fmtDay(d: number, month: number) {
     return `${String(d).padStart(2, '0')}/${String(month + 1).padStart(2, '0')}`
   }
@@ -179,13 +165,13 @@ export default function CalendarioScreen() {
 
               {ROWS.map(row => (
                 <div key={row.key} className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
-                  {/* Label da linha */}
+                  {/* Label da linha — cores atualizadas */}
                   <div className="flex items-center">
                     <span className={`text-[9px] font-bold uppercase tracking-wider ${
-                      row.key === 'saldo'   ? 'text-[#3a5030]' :
-                      row.key === 'overdue' ? 'text-[#ff5757]' :
-                      row.key === 'income'  ? 'text-[#6dd400]' :
-                                              'text-[#ff5757]'
+                      row.key === 'saldo'   ? 'text-[#3a5030]'  :
+                      row.key === 'overdue' ? 'text-[#ffc04d]'  :  // amarelo
+                      row.key === 'income'  ? 'text-[#5bc8ff]'  :  // azul
+                                              'text-[#ff5757]'     // vermelho
                     }`}>{row.label}</span>
                   </div>
 
@@ -203,7 +189,6 @@ export default function CalendarioScreen() {
                         : 'bg-[rgba(255,87,87,0.08)] text-[#ff5757] border-[rgba(255,87,87,0.2)]'
                       return (
                         <div key={i} className={`${cls} ${isToday ? '!border-[#6dd400] border-[1.5px]' : ''} border rounded-[4px] px-1 py-1 text-center`}>
-                          {/* Data dd/mm em verde neon */}
                           <div style={{ color: '#6dd400', fontSize: 7, fontWeight: 700, lineHeight: 1, marginBottom: 1 }}>
                             {fmtDay(day.d, calendarMonth)}
                           </div>
@@ -221,7 +206,7 @@ export default function CalendarioScreen() {
                         <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
                           {overdueTxs.slice(0, 2).map((t, ti) => (
                             <div key={ti} className="bg-[rgba(255,87,87,0.12)] text-[#ff5757] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
-                              {t.type === 'income' ? '+' : '-'}{fmtCurrencyK(t.amount)}
+                              {fmtValueK(t.amount, t.type)}
                             </div>
                           ))}
                         </div>
@@ -234,10 +219,12 @@ export default function CalendarioScreen() {
                       return (
                         <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
                           {incomeTxs.slice(0, 2).map((t, ti) => {
-                            const color = t.status === 'completed' ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]' : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
+                            const color = t.status === 'completed'
+                              ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]'
+                              : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
                             return (
                               <div key={ti} className={`${color} rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]`}>
-                                +{fmtCurrencyK(t.amount)}
+                                {fmtValueK(t.amount, 'income')}
                               </div>
                             )
                           })}
@@ -250,10 +237,12 @@ export default function CalendarioScreen() {
                     return (
                       <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
                         {expenseTxs.slice(0, 2).map((t, ti) => {
-                          const color = t.status === 'completed' ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]' : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
+                          const color = t.status === 'completed'
+                            ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]'
+                            : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
                           return (
                             <div key={ti} className={`${color} rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]`}>
-                              -{fmtCurrencyK(t.amount)}
+                              {fmtValueK(t.amount, 'expense')}
                             </div>
                           )
                         })}
