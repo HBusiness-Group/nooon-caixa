@@ -9,7 +9,7 @@ export interface Account {
   name: string
   type: string
   initial_balance: number
-  balance_date?: string   // ← adicionar esta linha
+  balance_date?: string
   color: string
   is_active: boolean
   created_at: string
@@ -27,7 +27,7 @@ export interface Transaction {
   category: string
   amount: number
   type: string
-  status: string
+  status: 'planned' | 'completed' | 'cancelled' | 'overdue' | 'simulated'
   date: string
   created_at: string
   updated_at: string
@@ -173,7 +173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateTransactionStatus: async (id, status) => {
     await supabase.from('transactions').update({ status } as any).eq('id', id)
     set(s => ({
-      transactions: s.transactions.map(t => t.id === id ? { ...t, status } : t)
+      transactions: s.transactions.map(t => t.id === id ? { ...t, status: status as Transaction['status'] } : t)
     }))
     await get().loadAccounts()
   },
