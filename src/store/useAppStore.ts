@@ -47,20 +47,64 @@ export interface NewTransactionPayload {
   installments?: number
 }
 
+// Categoria customizada pelo usuário
+export interface CustomCategory {
+  key: string    // slug único, ex: "marketing"
+  label: string  // nome exibido, ex: "Marketing"
+  icon: string   // emoji
+  color: string  // hex
+}
+
+// Categorias fixas do sistema (não excluíveis)
+export const SYSTEM_CATEGORIES: CustomCategory[] = [
+  { key: 'business',    label: 'Business',     icon: '💼', color: '#6dd400' },
+  { key: 'acquisition', label: 'Aquisição',    icon: '🛒', color: '#ffb340' },
+  { key: 'loan',        label: 'Empréstimo',   icon: '🔁', color: '#ff5757' },
+  { key: 'transport',   label: 'Transporte',   icon: '🚗', color: '#40b4ff' },
+  { key: 'food',        label: 'Alimentação',  icon: '🍽', color: '#c084fc' },
+  { key: 'health',      label: 'Saúde',        icon: '❤',  color: '#fb7185' },
+  { key: 'other',       label: 'Outros',       icon: '📌', color: '#94a3b8' },
+]
+
+const STORAGE_KEY = 'nooon_custom_categories'
+
+function loadCustomCatsFromStorage(): CustomCategory[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+function saveCustomCatsToStorage(cats: CustomCategory[]) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(cats))
+}
+
 interface AppState {
   userId: string | null
   setUserId: (id: string | null) => void
+
   accounts: Account[]
   currentAccountId: string | null
   loadAccounts: () => Promise<void>
   setCurrentAccount: (id: string) => void
   addAccount: (data: Omit<Account, 'id' | 'user_id' | 'created_at' | 'current_balance'>) => Promise<void>
   deleteAccount: (id: string) => Promise<void>
+
   transactions: Transaction[]
   loadTransactions: () => Promise<void>
   addTransaction: (data: NewTransactionPayload) => Promise<void>
   updateTransactionStatus: (id: string, status: string) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
+
+  // Categorias dinâmicas
+  customCategories: CustomCategory[]
+  loadCustomCategories: () => void
+  addCustomCategory: (cat: CustomCategory) => void
+  deleteCustomCategory: (key: string) => void
+  allCategories: () => CustomCategory[]
+
   activeTab: 'registro' | 'calendario' | 'resumo' | 'contas'
   setActiveTab: (tab: AppState['activeTab']) => void
   calendarMonth: number
@@ -157,7 +201,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         status: i === 0 ? status : 'planned',
         date: format(addMonths(new Date(date + 'T12:00:00'), i), 'yyyy-MM-dd'),
       }))
-
       await supabase.from('transactions').insert(rows as any)
     } else {
       await supabase.from('transactions').insert({
@@ -182,6 +225,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     await supabase.from('transactions').delete().eq('id', id)
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
     await get().loadAccounts()
+  },
+
+  // ── Categorias ──
+  customCategories: [],
+
+  loadCustomCategories: () => {
+    const cats = loadCustomCatsFromStorage()
+    set({ customCategories: cats })
+  },
+
+  addCustomCategory: (cat) => {
+    const current = get().customCategories
+    // Evita chave duplicada
+    if (current.some(c => c.key === cat.key)) return
+    const updated = [...current, cat]
+    saveCustomCatsToStorage(updated)
+    set({ customCategories: updated })
+  },
+
+  deleteCustomCategory: (key) => {
+    const updated = get().customCategories.filter(c => c.key !== key)
+    saveCustomCatsToStorage(updated)
+    set({ customCategories: updated })
+  },
+
+  allCategories: () => {
+    const { customCategories } = get()
+    return [...SYSTEM_CATEGORIES, ...customCategories]
   },
 
   activeTab: 'registro',
