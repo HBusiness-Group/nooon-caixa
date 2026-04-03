@@ -1,10 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { CAT_LABELS, fmtCurrency } from '@/lib/utils'
+import { fmtCurrency } from '@/lib/utils'
 import { addMonths, format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
-import type { Category, TransactionType, TransactionStatus } from '@/types/database'
+import type { TransactionType, TransactionStatus } from '@/types/database'
 import type { Transaction } from '@/store/useAppStore'
 
 interface Props {
@@ -13,21 +13,27 @@ interface Props {
 }
 
 export default function TransactionModal({ onClose, editTx }: Props) {
-  const { accounts, currentAccountId, addTransaction, loadTransactions, loadAccounts } = useAppStore()
-  const isEdit = !!editTx
+  const {
+    accounts, currentAccountId,
+    addTransaction, loadTransactions, loadAccounts,
+    allCategories,
+  } = useAppStore()
 
-  const [tipo, setTipo] = useState<TransactionType>('expense')
-  const [desc, setDesc] = useState('')
-  const [valor, setValor] = useState('')
+  const isEdit = !!editTx
+  const cats = allCategories()
+
+  const [tipo, setTipo]           = useState<TransactionType>('expense')
+  const [desc, setDesc]           = useState('')
+  const [valor, setValor]         = useState('')
   const [accountId, setAccountId] = useState(currentAccountId || '')
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [date, setDate]           = useState(format(new Date(), 'yyyy-MM-dd'))
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [status, setStatus] = useState<TransactionStatus>('completed')
-  const [category, setCategory] = useState<Category>('business')
-  const [groupRef, setGroupRef] = useState('')
+  const [status, setStatus]       = useState<TransactionStatus>('completed')
+  const [category, setCategory]   = useState(cats[0]?.key || 'business')
+  const [groupRef, setGroupRef]   = useState('')
   const [installments, setInstallments] = useState(1)
-  const [customParc, setCustomParc] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [customParc, setCustomParc]     = useState('')
+  const [loading, setLoading]     = useState(false)
 
   useEffect(() => {
     if (editTx) {
@@ -38,14 +44,14 @@ export default function TransactionModal({ onClose, editTx }: Props) {
       setDate(editTx.date)
       setPaymentDate(editTx.date)
       setStatus(editTx.status as TransactionStatus)
-      setCategory(editTx.category as Category)
+      setCategory(editTx.category)
       setGroupRef(editTx.group_ref || '')
       setInstallments(1)
     }
   }, [editTx])
 
-  const parcN = installments === 0 ? parseInt(customParc) || 1 : installments
-  const parcVal = parseFloat(valor) / parcN
+  const parcN    = installments === 0 ? parseInt(customParc) || 1 : installments
+  const parcVal  = parseFloat(valor) / parcN
   const lastDate = parcN > 1 ? format(addMonths(new Date(date + 'T12:00:00'), parcN - 1), 'dd/MM/yyyy') : null
   const isOverdue = editTx?.status === 'overdue'
 
@@ -59,14 +65,9 @@ export default function TransactionModal({ onClose, editTx }: Props) {
         finalDesc = `${finalDesc} · Pago em ${format(new Date(paymentDate + 'T12:00:00'), 'dd/MM/yyyy')}`
       }
       await supabase.from('transactions').update({
-        type: tipo,
-        description: finalDesc,
-        amount: parseFloat(valor),
-        account_id: accountId,
-        date: date,
-        status,
-        category,
-        group_ref: groupRef,
+        type: tipo, description: finalDesc,
+        amount: parseFloat(valor), account_id: accountId,
+        date, status, category, group_ref: groupRef,
       } as any).eq('id', editTx.id)
       await loadTransactions()
       await loadAccounts()
@@ -87,7 +88,7 @@ export default function TransactionModal({ onClose, editTx }: Props) {
     onClose()
   }
 
-  const inputCls = "w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-colors"
+  const inputCls  = "w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-colors"
   const inputStyle = { background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }
 
   return (
@@ -162,15 +163,15 @@ export default function TransactionModal({ onClose, editTx }: Props) {
             <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as TransactionStatus)}
               className={inputCls} style={inputStyle}>
-              <option value="completed"  style={{ background: '#223026' }}>✓ Realizado</option>
-              <option value="planned"    style={{ background: '#223026' }}>◷ Planejado</option>
-              <option value="overdue"    style={{ background: '#223026' }}>⚠ Atrasado</option>
-              <option value="simulated"  style={{ background: '#223026' }}>◈ Simulado</option>
+              <option value="completed" style={{ background: '#223026' }}>✓ Realizado</option>
+              <option value="planned"   style={{ background: '#223026' }}>◷ Planejado</option>
+              <option value="overdue"   style={{ background: '#223026' }}>⚠ Atrasado</option>
+              <option value="simulated" style={{ background: '#223026' }}>◈ Simulado</option>
             </select>
           </div>
         </div>
 
-        {/* Aviso visual quando status = simulado */}
+        {/* Aviso simulado */}
         {status === 'simulated' && (
           <div className="mb-3 px-3 py-2 rounded-lg border text-[11px]"
             style={{ background: 'rgba(192,132,252,0.07)', borderColor: 'rgba(192,132,252,0.25)', color: '#c084fc' }}>
@@ -182,9 +183,13 @@ export default function TransactionModal({ onClose, editTx }: Props) {
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Categoria</label>
-            <select value={category} onChange={e => setCategory(e.target.value as Category)}
+            <select value={category} onChange={e => setCategory(e.target.value)}
               className={inputCls} style={inputStyle}>
-              {Object.entries(CAT_LABELS).map(([v, l]) => <option key={v} value={v} style={{ background: '#223026' }}>{l}</option>)}
+              {cats.map(cat => (
+                <option key={cat.key} value={cat.key} style={{ background: '#223026' }}>
+                  {cat.icon} {cat.label}
+                </option>
+              ))}
             </select>
           </div>
           <div>
