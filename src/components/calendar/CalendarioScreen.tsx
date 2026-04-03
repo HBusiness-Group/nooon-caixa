@@ -1,11 +1,14 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { MONTH_NAMES, DOW_NAMES, fmtCurrencyK, fmtCurrency, fmtValueK } from '@/lib/utils'
+import { MONTH_NAMES, fmtCurrencyK, fmtCurrency, fmtValueK } from '@/lib/utils'
 import type { Transaction } from '@/types/database'
 
 export default function CalendarioScreen() {
   const { transactions, accounts, calendarMonth, calendarYear, setCalendarMonth } = useAppStore()
+
+  // Toggle: simulados refletem nos cálculos (true) ou são zerados (false)
+  const [simuladoAtivo, setSimuladoAtivo] = useState(false)
 
   const monthStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}`
   const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate()
@@ -20,36 +23,46 @@ export default function CalendarioScreen() {
     return arr
   }, [calendarMonth, calendarYear, daysInMonth])
 
+  // Transações efetivas para cálculo: simulado desativado = amount 0 / cancelled
+  const effectiveTxs = useMemo(() => {
+    return transactions.map(t => {
+      if (t.status === 'simulated') {
+        if (!simuladoAtivo) return { ...t, amount: 0, status: 'cancelled' as const }
+        return { ...t, status: 'planned' as const }
+      }
+      return t
+    })
+  }, [transactions, simuladoAtivo])
+
+  // Transações para exibição nas células (respeita toggle de visibilidade)
   const txByDay = useMemo(() => {
     const map: Record<string, Transaction[]> = {}
     days.forEach(({ ds }) => { map[ds] = [] })
     transactions
-      .filter(t => t.date.startsWith(monthStr) && t.status !== 'cancelled')
+      .filter(t => {
+        if (t.status === 'cancelled') return false
+        if (t.status === 'simulated' && !simuladoAtivo) return false
+        return t.date.startsWith(monthStr)
+      })
       .forEach(t => { if (map[t.date]) map[t.date].push(t) })
     return map
-  }, [transactions, days, monthStr])
+  }, [transactions, days, monthStr, simuladoAtivo])
 
   const saldoByDay = useMemo(() => {
     const todayStr = new Date().toISOString().split('T')[0]
-
     const totalAtual = accounts.reduce((s, a) => s + (a.current_balance ?? a.initial_balance ?? 0), 0)
 
-    const allMonthTxs = transactions
+    const allMonthTxs = effectiveTxs
       .filter(t => t.date.startsWith(monthStr) && t.status !== 'cancelled')
       .sort((a, b) => a.date.localeCompare(b.date))
 
     const accountEntries = accounts
       .filter(a => (a as any).balance_date && (a as any).balance_date.startsWith(monthStr))
-      .map(a => ({
-        date: (a as any).balance_date as string,
-        balance: a.initial_balance,
-      }))
+      .map(a => ({ date: (a as any).balance_date as string, balance: a.initial_balance }))
 
     const map: Record<string, number> = {}
-
     days.forEach(({ ds }) => {
       let delta = 0
-
       if (ds > todayStr) {
         allMonthTxs
           .filter(t => t.date > todayStr && t.date <= ds)
@@ -59,18 +72,13 @@ export default function CalendarioScreen() {
           .filter(t => t.date > ds && t.date <= todayStr && t.status === 'completed')
           .forEach(t => { delta += t.type === 'income' ? -t.amount : t.amount })
       }
-
       accountEntries.forEach(entry => {
-        if (ds < entry.date) {
-          delta -= entry.balance
-        }
+        if (ds < entry.date) delta -= entry.balance
       })
-
       map[ds] = totalAtual + delta
     })
-
     return map
-  }, [days, accounts, transactions, monthStr])
+  }, [days, accounts, effectiveTxs, monthStr])
 
   const minSaldo = Math.min(...Object.values(saldoByDay))
   const minDay = Object.keys(saldoByDay).find(d => saldoByDay[d] === minSaldo)
@@ -105,26 +113,59 @@ export default function CalendarioScreen() {
   }
 
   const ROWS = [
-    { key: 'saldo',     label: 'SALDO' },
-    { key: 'overdue',   label: 'ATRASADOS' },
-    { key: 'income',    label: 'ENTRADA' },
-    { key: 'expense',   label: 'SAÍDA' },
+    { key: 'saldo',   label: 'SALDO' },
+    { key: 'overdue', label: 'ATRASADOS' },
+    { key: 'income',  label: 'ENTRADA' },
+    { key: 'expense', label: 'SAÍDA' },
   ] as const
 
   return (
     <div className="pb-6">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navMonth(-1)} className="w-7 h-7 bg-[#172010] border border-[rgba(109,212,0,0.1)] rounded-lg text-[#8aab80] flex items-center justify-center text-sm hover:bg-[#1e2a18] transition-colors">‹</button>
-          <div>
-            <span className="font-['Barlow_Condensed'] text-lg font-black text-[#e8f0e4]">{MONTH_NAMES[calendarMonth]}</span>
-            <span className="text-[#3a5030] text-sm ml-1.5">{calendarYear}</span>
+
+      {/* ── Header ── */}
+      <div className="px-4 py-3 flex flex-col gap-2">
+
+        {/* Linha 1: navegação de mês + botão Simulado */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navMonth(-1)}
+              className="w-7 h-7 bg-[#172010] border border-[rgba(109,212,0,0.1)] rounded-lg text-[#8aab80] flex items-center justify-center text-sm hover:bg-[#1e2a18] transition-colors">‹</button>
+            <div>
+              <span className="font-['Barlow_Condensed'] text-lg font-black text-[#e8f0e4]">{MONTH_NAMES[calendarMonth]}</span>
+              <span className="text-[#3a5030] text-sm ml-1.5">{calendarYear}</span>
+            </div>
+            <button onClick={() => navMonth(1)}
+              className="w-7 h-7 bg-[#172010] border border-[rgba(109,212,0,0.1)] rounded-lg text-[#8aab80] flex items-center justify-center text-sm hover:bg-[#1e2a18] transition-colors">›</button>
           </div>
-          <button onClick={() => navMonth(1)} className="w-7 h-7 bg-[#172010] border border-[rgba(109,212,0,0.1)] rounded-lg text-[#8aab80] flex items-center justify-center text-sm hover:bg-[#1e2a18] transition-colors">›</button>
+
+          {/* Botão toggle Simulado */}
+          <button
+            onClick={() => setSimuladoAtivo(v => !v)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-wider transition-all"
+            style={{
+              background: simuladoAtivo ? 'rgba(192,132,252,0.12)' : '#172010',
+              borderColor: simuladoAtivo ? 'rgba(192,132,252,0.4)' : 'rgba(109,212,0,0.15)',
+              color: simuladoAtivo ? '#c084fc' : '#4a6844',
+            }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+              background: simuladoAtivo ? '#c084fc' : '#4a6844',
+              display: 'inline-block',
+            }} />
+            Simulado {simuladoAtivo ? 'ON' : 'OFF'}
+          </button>
         </div>
-        <div className="text-[10px] text-[#3a5030]">Plano <span className="text-[#ffb340]">×</span> Real</div>
+
+        {/* Linha 2: mensagem de status do simulado */}
+        <p className="text-[9px] leading-tight"
+          style={{ color: simuladoAtivo ? '#6dd400' : '#4a6844' }}>
+          {simuladoAtivo
+            ? 'Os registros SIMULADOS estão refletindo dentro da projeção financeira'
+            : 'Os registros SIMULADOS estão nulos e NÃO refletem na projeção financeira'}
+        </p>
       </div>
 
+      {/* Alerta saldo negativo */}
       {minSaldo < 0 && minDay && (
         <div className="mx-4 mb-3 bg-[rgba(255,87,87,0.07)] border border-[rgba(255,87,87,0.2)] rounded-xl px-3 py-2.5 flex items-center gap-2">
           <span className="text-base flex-shrink-0">⚠</span>
@@ -141,6 +182,7 @@ export default function CalendarioScreen() {
           { color: '#6dd400', label: 'Realizado' },
           { color: '#ffb340', label: 'Planejado' },
           { color: '#ff5757', label: 'Atrasado' },
+          { color: '#c084fc', label: 'Simulado' },
         ].map(l => (
           <div key={l.label} className="flex items-center gap-1.5 text-[10px] text-[#4a6644]">
             <span className="w-2 h-2 rounded-full" style={{ background: l.color }} />
@@ -149,8 +191,10 @@ export default function CalendarioScreen() {
         ))}
       </div>
 
+      {/* Grade */}
       <div className="px-4 overflow-x-auto">
         <div style={{ minWidth: 560 }}>
+
           {/* Header dias da semana */}
           <div className="grid gap-[2px] mb-1" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
             <div />
@@ -165,13 +209,12 @@ export default function CalendarioScreen() {
 
               {ROWS.map(row => (
                 <div key={row.key} className="grid gap-[2px] mb-[2px]" style={{ gridTemplateColumns: '72px repeat(7, 1fr)' }}>
-                  {/* Label da linha — cores atualizadas */}
                   <div className="flex items-center">
                     <span className={`text-[9px] font-bold uppercase tracking-wider ${
-                      row.key === 'saldo'   ? 'text-[#3a5030]'  :
-                      row.key === 'overdue' ? 'text-[#ffc04d]'  :  // amarelo
-                      row.key === 'income'  ? 'text-[#5bc8ff]'  :  // azul
-                                              'text-[#ff5757]'     // vermelho
+                      row.key === 'saldo'   ? 'text-[#3a5030]' :
+                      row.key === 'overdue' ? 'text-[#ffc04d]' :
+                      row.key === 'income'  ? 'text-[#5bc8ff]' :
+                                              'text-[#ff5757]'
                     }`}>{row.label}</span>
                   </div>
 
@@ -219,7 +262,9 @@ export default function CalendarioScreen() {
                       return (
                         <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
                           {incomeTxs.slice(0, 2).map((t, ti) => {
-                            const color = t.status === 'completed'
+                            const color = t.status === 'simulated'
+                              ? 'bg-[rgba(192,132,252,0.12)] text-[#c084fc]'
+                              : t.status === 'completed'
                               ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]'
                               : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
                             return (
@@ -237,7 +282,9 @@ export default function CalendarioScreen() {
                     return (
                       <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
                         {expenseTxs.slice(0, 2).map((t, ti) => {
-                          const color = t.status === 'completed'
+                          const color = t.status === 'simulated'
+                            ? 'bg-[rgba(192,132,252,0.12)] text-[#c084fc]'
+                            : t.status === 'completed'
                             ? 'bg-[rgba(109,212,0,0.15)] text-[#6dd400]'
                             : 'bg-[rgba(255,179,64,0.12)] text-[#ffb340]'
                           return (
