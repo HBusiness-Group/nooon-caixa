@@ -1,8 +1,8 @@
-export type TransactionType = 'income' | 'expense'
-export type TransactionStatus = 'planned' | 'completed' | 'cancelled'
-export type AccountType = 'checking' | 'savings' | 'credit_card' | 'wallet' | 'investment' | 'other'
-export type Category = 'business' | 'acquisition' | 'loan' | 'transport' | 'food' | 'health' | 'other'
-export type Plan = 'free' | 'nooon' | 'pro'
+export type TransactionType   = 'income' | 'expense'
+export type TransactionStatus = 'planned' | 'completed' | 'cancelled' | 'overdue' | 'simulated'
+export type AccountType       = 'checking' | 'savings' | 'credit_card' | 'wallet' | 'investment' | 'other'
+export type Category          = string
+export type Plan              = 'free' | 'nooon' | 'pro'
 
 export interface User {
   id: string
@@ -18,6 +18,7 @@ export interface Account {
   name: string
   type: AccountType
   initial_balance: number
+  balance_date?: string
   color: string
   is_active: boolean
   created_at: string
@@ -69,10 +70,10 @@ export interface NewTransactionPayload {
 export interface Database {
   public: {
     Tables: {
-      users: { Row: User; Insert: Partial<User>; Update: Partial<User> }
-      accounts: { Row: Account; Insert: Omit<Account, 'id' | 'created_at'>; Update: Partial<Account> }
-      transactions: { Row: Transaction; Insert: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Transaction> }
-      installment_groups: { Row: InstallmentGroup; Insert: Omit<InstallmentGroup, 'id' | 'created_at'>; Update: Partial<InstallmentGroup> }
+      users:              { Row: User;              Insert: Partial<User>;                                          Update: Partial<User> }
+      accounts:           { Row: Account;           Insert: Omit<Account, 'id' | 'created_at'>;                   Update: Partial<Account> }
+      transactions:       { Row: Transaction;       Insert: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>; Update: Partial<Transaction> }
+      installment_groups: { Row: InstallmentGroup;  Insert: Omit<InstallmentGroup, 'id' | 'created_at'>;          Update: Partial<InstallmentGroup> }
     }
     Views: {
       account_balances: { Row: Account & { current_balance: number } }
