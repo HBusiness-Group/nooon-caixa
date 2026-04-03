@@ -4,8 +4,11 @@ import { useAppStore } from '@/store/useAppStore'
 import { fmtCurrency } from '@/lib/utils'
 import { addMonths, format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
-import type { TransactionType, TransactionStatus } from '@/types/database'
 import type { Transaction } from '@/store/useAppStore'
+
+// Tipos locais — sem depender de @/types/database para category
+type TransactionType = 'income' | 'expense'
+type TransactionStatus = 'completed' | 'planned' | 'overdue' | 'simulated' | 'cancelled'
 
 interface Props {
   onClose: () => void
@@ -29,7 +32,7 @@ export default function TransactionModal({ onClose, editTx }: Props) {
   const [date, setDate]           = useState(format(new Date(), 'yyyy-MM-dd'))
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [status, setStatus]       = useState<TransactionStatus>('completed')
-  const [category, setCategory]   = useState(cats[0]?.key || 'business')
+  const [category, setCategory]   = useState<string>(cats[0]?.key || 'business')
   const [groupRef, setGroupRef]   = useState('')
   const [installments, setInstallments] = useState(1)
   const [customParc, setCustomParc]     = useState('')
@@ -44,7 +47,7 @@ export default function TransactionModal({ onClose, editTx }: Props) {
       setDate(editTx.date)
       setPaymentDate(editTx.date)
       setStatus(editTx.status as TransactionStatus)
-      setCategory(editTx.category)
+      setCategory(editTx.category) // string puro, aceita qualquer categoria
       setGroupRef(editTx.group_ref || '')
       setInstallments(1)
     }
@@ -64,19 +67,27 @@ export default function TransactionModal({ onClose, editTx }: Props) {
       if (isOverdue && status === 'completed') {
         finalDesc = `${finalDesc} · Pago em ${format(new Date(paymentDate + 'T12:00:00'), 'dd/MM/yyyy')}`
       }
-      await supabase.from('transactions').update({
-        type: tipo, description: finalDesc,
-        amount: parseFloat(valor), account_id: accountId,
-        date, status, category, group_ref: groupRef,
+      const { error } = await supabase.from('transactions').update({
+        type: tipo,
+        description: finalDesc,
+        amount: parseFloat(valor),
+        account_id: accountId,
+        date,
+        status,
+        category,        // string puro — aceita customizadas
+        group_ref: groupRef,
       } as any).eq('id', editTx.id)
-      await loadTransactions()
-      await loadAccounts()
+
+      if (!error) {
+        await loadTransactions()
+        await loadAccounts()
+      }
     } else {
       await addTransaction({
         account_id: accountId,
         description: desc.trim(),
         group_ref: groupRef,
-        category,
+        category,        // string puro — aceita customizadas
         amount: parseFloat(valor),
         type: tipo,
         status,
@@ -84,11 +95,12 @@ export default function TransactionModal({ onClose, editTx }: Props) {
         installments: parcN > 1 ? parcN : undefined,
       })
     }
+
     setLoading(false)
     onClose()
   }
 
-  const inputCls  = "w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-colors"
+  const inputCls   = "w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-colors"
   const inputStyle = { background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }
 
   return (
