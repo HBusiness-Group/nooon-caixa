@@ -29,7 +29,6 @@ export default function TransactionModal({ onClose, editTx }: Props) {
   const [customParc, setCustomParc] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Preenche campos ao editar
   useEffect(() => {
     if (editTx) {
       setTipo(editTx.type as TransactionType)
@@ -55,7 +54,6 @@ export default function TransactionModal({ onClose, editTx }: Props) {
     setLoading(true)
 
     if (isEdit && editTx) {
-      // Monta descrição com data de pagamento se era atrasado
       let finalDesc = desc.trim()
       if (isOverdue && status === 'completed') {
         finalDesc = `${finalDesc} · Pago em ${format(new Date(paymentDate + 'T12:00:00'), 'dd/MM/yyyy')}`
@@ -94,7 +92,8 @@ export default function TransactionModal({ onClose, editTx }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75">
-      <div className="w-full max-w-2xl rounded-t-2xl p-5 max-h-[90vh] overflow-y-auto border-t border-x" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)' }}>
+      <div className="w-full max-w-2xl rounded-t-2xl p-5 max-h-[90vh] overflow-y-auto border-t border-x"
+        style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)' }}>
         <div className="w-8 h-1 rounded mx-auto mb-5" style={{ background: '#2a3a2e' }} />
         <h2 className="font-['Barlow_Condensed'] text-xl font-black mb-5 tracking-wide" style={{ color: '#e8f5e2' }}>
           {isEdit ? 'Editar lançamento' : 'Novo lançamento'}
@@ -163,14 +162,23 @@ export default function TransactionModal({ onClose, editTx }: Props) {
             <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Status</label>
             <select value={status} onChange={e => setStatus(e.target.value as TransactionStatus)}
               className={inputCls} style={inputStyle}>
-              <option value="completed" style={{ background: '#223026' }}>Realizado</option>
-              <option value="planned" style={{ background: '#223026' }}>Planejado</option>
-              <option value="overdue" style={{ background: '#223026' }}>Atrasado</option>
+              <option value="completed"  style={{ background: '#223026' }}>✓ Realizado</option>
+              <option value="planned"    style={{ background: '#223026' }}>◷ Planejado</option>
+              <option value="overdue"    style={{ background: '#223026' }}>⚠ Atrasado</option>
+              <option value="simulated"  style={{ background: '#223026' }}>◈ Simulado</option>
             </select>
           </div>
         </div>
 
-        {/* Categoria + Grupo */}
+        {/* Aviso visual quando status = simulado */}
+        {status === 'simulated' && (
+          <div className="mb-3 px-3 py-2 rounded-lg border text-[11px]"
+            style={{ background: 'rgba(192,132,252,0.07)', borderColor: 'rgba(192,132,252,0.25)', color: '#c084fc' }}>
+            ◈ Este lançamento é uma simulação. Ele só reflete na projeção quando o modo Simulado estiver <strong>ATIVADO</strong> no Calendário.
+          </div>
+        )}
+
+        {/* Categoria + Observações */}
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>Categoria</label>
@@ -212,7 +220,8 @@ export default function TransactionModal({ onClose, editTx }: Props) {
               </div>
             )}
             {parcN > 1 && parseFloat(valor) > 0 && (
-              <div className="rounded-lg px-3 py-2 text-xs border" style={{ background: '#223026', borderColor: 'rgba(91,200,255,0.15)', color: '#a8c8a0' }}>
+              <div className="rounded-lg px-3 py-2 text-xs border"
+                style={{ background: '#223026', borderColor: 'rgba(91,200,255,0.15)', color: '#a8c8a0' }}>
                 <span style={{ color: '#5bc8ff', fontWeight: 700 }}>{parcN}×</span> de{' '}
                 <span style={{ color: '#5bc8ff', fontWeight: 700 }}>{fmtCurrency(parcVal)}</span>
                 {' '}· 1ª em {format(new Date(date + 'T12:00:00'), 'dd/MM/yyyy')}
