@@ -7,22 +7,24 @@ import type { Transaction } from '@/store/useAppStore'
 import { supabase } from '@/lib/supabase'
 import { format } from 'date-fns'
 
-type Filter = 'todos' | 'completed' | 'planned' | 'overdue' | 'income' | 'expense' | 'parcela'
+type Filter = 'todos' | 'completed' | 'planned' | 'overdue' | 'simulated' | 'income' | 'expense' | 'parcela'
 
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: 'todos', label: 'Todos' },
+  { id: 'todos',     label: 'Todos' },
   { id: 'completed', label: 'Realizados' },
-  { id: 'planned', label: 'Planejados' },
-  { id: 'overdue', label: 'Atrasados' },
-  { id: 'income', label: 'Entradas' },
-  { id: 'expense', label: 'Saídas' },
-  { id: 'parcela', label: 'Parcelados' },
+  { id: 'planned',   label: 'Planejados' },
+  { id: 'overdue',   label: 'Atrasados' },
+  { id: 'simulated', label: 'Simulados' },
+  { id: 'income',    label: 'Entradas' },
+  { id: 'expense',   label: 'Saídas' },
+  { id: 'parcela',   label: 'Parcelados' },
 ]
 
 function statusPriority(status: string) {
-  if (status === 'overdue') return 0
-  if (status === 'planned') return 1
-  return 2
+  if (status === 'overdue')   return 0
+  if (status === 'planned')   return 1
+  if (status === 'simulated') return 2
+  return 3
 }
 
 export default function RegistroScreen() {
@@ -57,12 +59,13 @@ export default function RegistroScreen() {
   const filtered = useMemo(() => {
     let txs = [...transactions]
 
-    if (filter === 'completed') txs = txs.filter(t => t.status === 'completed')
-    else if (filter === 'planned') txs = txs.filter(t => t.status === 'planned')
-    else if (filter === 'overdue') txs = txs.filter(t => t.status === 'overdue')
-    else if (filter === 'income') txs = txs.filter(t => t.type === 'income')
-    else if (filter === 'expense') txs = txs.filter(t => t.type === 'expense')
-    else if (filter === 'parcela') txs = txs.filter(t => t.installment_group_id)
+    if (filter === 'completed')  txs = txs.filter(t => t.status === 'completed')
+    else if (filter === 'planned')   txs = txs.filter(t => t.status === 'planned')
+    else if (filter === 'overdue')   txs = txs.filter(t => t.status === 'overdue')
+    else if (filter === 'simulated') txs = txs.filter(t => t.status === 'simulated')
+    else if (filter === 'income')    txs = txs.filter(t => t.type === 'income')
+    else if (filter === 'expense')   txs = txs.filter(t => t.type === 'expense')
+    else if (filter === 'parcela')   txs = txs.filter(t => t.installment_group_id)
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -77,7 +80,7 @@ export default function RegistroScreen() {
     }
 
     if (dateFrom) txs = txs.filter(t => t.date >= dateFrom)
-    if (dateTo) txs = txs.filter(t => t.date <= dateTo)
+    if (dateTo)   txs = txs.filter(t => t.date <= dateTo)
 
     return txs.sort((a, b) => {
       const pa = statusPriority(a.status)
@@ -88,9 +91,9 @@ export default function RegistroScreen() {
   }, [transactions, filter, search, dateFrom, dateTo])
 
   const thisMonthTxs = transactions.filter(t => t.date.startsWith(thisMonth))
-  const income = thisMonthTxs.filter(t => t.type === 'income' && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
+  const income  = thisMonthTxs.filter(t => t.type === 'income'  && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
   const expense = thisMonthTxs.filter(t => t.type === 'expense' && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
-  const result = income - expense
+  const result  = income - expense
 
   const groups: Record<string, Transaction[]> = {}
   filtered.forEach(t => {
@@ -116,12 +119,12 @@ export default function RegistroScreen() {
   return (
     <div className="relative pb-20">
 
-      {/* Stats — mantém R$ nos cabeçalhos */}
+      {/* Stats — mantém R$ */}
       <div className="grid grid-cols-3 gap-1.5 p-4 pb-3">
         {[
-          { label: 'Entradas', value: income, color: '#6dd400' },
-          { label: 'Saídas', value: expense, color: '#ff6b6b' },
-          { label: 'Resultado', value: result, color: result >= 0 ? '#6dd400' : '#ff6b6b' },
+          { label: 'Entradas', value: income,  color: '#6dd400' },
+          { label: 'Saídas',   value: expense, color: '#ff6b6b' },
+          { label: 'Resultado',value: result,  color: result >= 0 ? '#6dd400' : '#ff6b6b' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-2.5 border" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.15)' }}>
             <div className="text-[9px] font-bold uppercase tracking-widest mb-1" style={{ color: '#6a9060' }}>{s.label}</div>
@@ -132,7 +135,7 @@ export default function RegistroScreen() {
         ))}
       </div>
 
-      {/* Filtros de status */}
+      {/* Filtros */}
       <div className="flex gap-1.5 px-4 pb-2 overflow-x-auto scrollbar-none">
         {FILTERS.map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)}
@@ -147,7 +150,7 @@ export default function RegistroScreen() {
         ))}
       </div>
 
-      {/* Barra de busca */}
+      {/* Busca */}
       <div className="px-4 pb-3">
         <button
           onClick={() => { setShowSearch(!showSearch); if (showSearch) clearSearch() }}
@@ -206,7 +209,7 @@ export default function RegistroScreen() {
         )}
       </div>
 
-      {/* Lista agrupada por mês */}
+      {/* Lista */}
       <div className="px-4">
         {sortedMonths.map(month => {
           const [y, m] = month.split('-')
@@ -264,15 +267,22 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   const day = tx.date.split('-')[2]
 
   const statusConfig: Record<string, { color: string; bg: string; label: string; bar: string }> = {
-    completed: { color: '#6dd400', bg: 'rgba(109,212,0,0.1)',   label: 'OK',       bar: '#6dd400' },
-    planned:   { color: '#ffc04d', bg: 'rgba(255,192,77,0.1)',  label: 'Plan',     bar: '#ffc04d' },
-    overdue:   { color: '#ff6b6b', bg: 'rgba(255,107,107,0.1)', label: 'Atrasado', bar: '#ff6b6b' },
-    cancelled: { color: '#555',    bg: 'rgba(100,100,100,0.1)', label: 'Cancel',   bar: '#555'    },
+    completed: { color: '#6dd400', bg: 'rgba(109,212,0,0.1)',    label: 'OK',       bar: '#6dd400' },
+    planned:   { color: '#ffc04d', bg: 'rgba(255,192,77,0.1)',   label: 'Plan',     bar: '#ffc04d' },
+    overdue:   { color: '#ff6b6b', bg: 'rgba(255,107,107,0.1)',  label: 'Atrasado', bar: '#ff6b6b' },
+    simulated: { color: '#c084fc', bg: 'rgba(192,132,252,0.1)',  label: 'Sim',      bar: '#c084fc' },
+    cancelled: { color: '#555',    bg: 'rgba(100,100,100,0.1)',  label: 'Cancel',   bar: '#555'    },
   }
   const sc = statusConfig[tx.status] || statusConfig.planned
 
-  // Cor do valor: entrada = verde, saída realizada = vermelho, saída planejada/atrasada = âmbar
-  const valColor = isIncome ? '#6dd400' : tx.status === 'completed' ? '#ff6b6b' : '#ffc04d'
+  // Cor do valor: entrada=verde, saída realizada=vermelho, saída planejada/atrasada=âmbar, simulado=roxo
+  const valColor = tx.status === 'simulated'
+    ? '#c084fc'
+    : isIncome
+    ? '#6dd400'
+    : tx.status === 'completed'
+    ? '#ff6b6b'
+    : '#ffc04d'
 
   async function handleMarkCompleted() {
     if (tx.status === 'overdue') {
@@ -297,6 +307,7 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   async function cycleStatus() {
     if (loading) return
     setLoading(true)
+    // Simulado → Realizado direto; Realizado → Planejado; Planejado → Realizado
     const next = tx.status === 'completed' ? 'planned' : 'completed'
     await supabase.from('transactions').update({ status: next } as any).eq('id', tx.id)
     await loadTransactions()
@@ -333,9 +344,8 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
           </div>
         </div>
         <div className="text-right flex-shrink-0">
-          {/* Valor sem R$, sinal no final */}
           <div className="font-['JetBrains_Mono'] text-[13px] font-semibold" style={{ color: valColor }}>
-            {fmtValue(tx.amount, tx.type)}
+            {fmtValue(tx.amount, tx.type as 'income' | 'expense')}
           </div>
           <div className="flex items-center gap-1 justify-end mt-1">
             <span className="text-[10px]" style={{ color: '#4a6844' }}>dia {day}</span>
