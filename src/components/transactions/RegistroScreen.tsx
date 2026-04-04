@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { CAT_ICONS, CAT_LABELS, fmtCurrency, fmtValue, MONTH_NAMES } from '@/lib/utils'
+import { fmtCurrency, fmtValue, MONTH_NAMES } from '@/lib/utils'
 import TransactionModal from './TransactionModal'
 import type { Transaction } from '@/store/useAppStore'
 import { supabase } from '@/lib/supabase'
@@ -53,7 +53,6 @@ export default function RegistroScreen() {
 
   const now = new Date()
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-
   const hasActiveSearch = search.trim() !== '' || dateFrom !== '' || dateTo !== ''
 
   const filtered = useMemo(() => {
@@ -72,7 +71,7 @@ export default function RegistroScreen() {
       txs = txs.filter(t =>
         t.description.toLowerCase().includes(q) ||
         (t.group_ref || '').toLowerCase().includes(q) ||
-        CAT_LABELS[t.category]?.toLowerCase().includes(q) ||
+        t.category.toLowerCase().includes(q) ||
         String(t.amount).includes(q) ||
         t.date.includes(q) ||
         (t.account?.name || '').toLowerCase().includes(q)
@@ -119,7 +118,7 @@ export default function RegistroScreen() {
   return (
     <div className="relative pb-20">
 
-      {/* Stats — mantém R$ */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-1.5 p-4 pb-3">
         {[
           { label: 'Entradas', value: income,  color: '#6dd400' },
@@ -256,13 +255,18 @@ export default function RegistroScreen() {
 }
 
 function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
-  const { deleteTransaction, loadTransactions, loadAccounts } = useAppStore()
+  const { deleteTransaction, loadTransactions, loadAccounts, allCategories } = useAppStore()
   const [showActions, setShowActions] = useState(false)
   const [loading, setLoading] = useState(false)
   const [showPaymentDate, setShowPaymentDate] = useState(false)
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'))
 
-  const icon = CAT_ICONS[tx.category] || '📌'
+  // Lookup dinâmico — funciona para categorias fixas e customizadas
+  const cats = allCategories()
+  const catObj = cats.find(c => c.key === tx.category)
+  const icon     = catObj?.icon  ?? '📌'
+  const catLabel = catObj?.label ?? tx.category  // fallback: mostra o key se não achar
+
   const isIncome = tx.type === 'income'
   const day = tx.date.split('-')[2]
 
@@ -275,7 +279,6 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   }
   const sc = statusConfig[tx.status] || statusConfig.planned
 
-  // Cor do valor: entrada=verde, saída realizada=vermelho, saída planejada/atrasada=âmbar, simulado=roxo
   const valColor = tx.status === 'simulated'
     ? '#c084fc'
     : isIncome
@@ -285,10 +288,7 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
     : '#ffc04d'
 
   async function handleMarkCompleted() {
-    if (tx.status === 'overdue') {
-      setShowPaymentDate(true)
-      return
-    }
+    if (tx.status === 'overdue') { setShowPaymentDate(true); return }
     await cycleStatus()
   }
 
@@ -307,7 +307,6 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
   async function cycleStatus() {
     if (loading) return
     setLoading(true)
-    // Simulado → Realizado direto; Realizado → Planejado; Planejado → Realizado
     const next = tx.status === 'completed' ? 'planned' : 'completed'
     await supabase.from('transactions').update({ status: next } as any).eq('id', tx.id)
     await loadTransactions()
@@ -340,7 +339,7 @@ function TxItem({ tx, onEdit }: { tx: Transaction; onEdit: () => void }) {
                 <span className="text-[10px]" style={{ color: '#4a6844' }}>{tx.account.name}</span>
               </span>
             )}
-            <span className="text-[10px]" style={{ color: '#4a6844' }}>· {CAT_LABELS[tx.category]}</span>
+            <span className="text-[10px]" style={{ color: '#4a6844' }}>· {catLabel}</span>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
