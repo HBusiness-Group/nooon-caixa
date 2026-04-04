@@ -57,29 +57,14 @@ export interface CustomCategory {
 
 // Categorias fixas do sistema (não excluíveis)
 export const SYSTEM_CATEGORIES: CustomCategory[] = [
-  { key: 'business',    label: 'Business',     icon: '💼', color: '#6dd400' },
-  { key: 'acquisition', label: 'Aquisição',    icon: '🛒', color: '#ffb340' },
-  { key: 'loan',        label: 'Empréstimo',   icon: '🔁', color: '#ff5757' },
-  { key: 'transport',   label: 'Transporte',   icon: '🚗', color: '#40b4ff' },
-  { key: 'food',        label: 'Alimentação',  icon: '🍽', color: '#c084fc' },
-  { key: 'health',      label: 'Saúde',        icon: '❤',  color: '#fb7185' },
-  { key: 'other',       label: 'Outros',       icon: '📌', color: '#94a3b8' },
+  { key: 'business',    label: 'Business',    icon: '💼', color: '#6dd400' },
+  { key: 'acquisition', label: 'Aquisição',   icon: '🛒', color: '#ffb340' },
+  { key: 'loan',        label: 'Empréstimo',  icon: '🔁', color: '#ff5757' },
+  { key: 'transport',   label: 'Transporte',  icon: '🚗', color: '#40b4ff' },
+  { key: 'food',        label: 'Alimentação', icon: '🍽', color: '#c084fc' },
+  { key: 'health',      label: 'Saúde',       icon: '❤',  color: '#fb7185' },
+  { key: 'other',       label: 'Outros',      icon: '📌', color: '#94a3b8' },
 ]
-
-const STORAGE_KEY = 'nooon_custom_categories'
-
-function loadCustomCatsFromStorage(): CustomCategory[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch { return [] }
-}
-
-function saveCustomCatsToStorage(cats: CustomCategory[]) {
-  if (typeof window === 'undefined') return
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(cats))
-}
 
 interface AppState {
   userId: string | null
@@ -98,11 +83,11 @@ interface AppState {
   updateTransactionStatus: (id: string, status: string) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
 
-  // Categorias dinâmicas
+  // Categorias dinâmicas — persistidas no Supabase
   customCategories: CustomCategory[]
-  loadCustomCategories: () => void
-  addCustomCategory: (cat: CustomCategory) => void
-  deleteCustomCategory: (key: string) => void
+  loadCustomCategories: () => Promise<void>
+  addCustomCategory: (cat: CustomCategory) => Promise<void>
+  deleteCustomCategory: (key: string) => Promise<void>
   allCategories: () => CustomCategory[]
 
   activeTab: 'registro' | 'calendario' | 'resumo' | 'contas'
@@ -216,7 +201,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateTransactionStatus: async (id, status) => {
     await supabase.from('transactions').update({ status } as any).eq('id', id)
     set(s => ({
-      transactions: s.transactions.map(t => t.id === id ? { ...t, status: status as Transaction['status'] } : t)
+      transactions: s.transactions.map(t =>
+        t.id === id ? { ...t, status: status as Transaction['status'] } : t
+      )
     }))
     await get().loadAccounts()
   },
@@ -227,27 +214,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().loadAccounts()
   },
 
-  // ── Categorias ──
+  // ── Categorias — Supabase ──────────────────────────────────
   customCategories: [],
 
-  loadCustomCategories: () => {
-    const cats = loadCustomCatsFromStorage()
+  loadCustomCategories: async () => {
+    const { data, error } = await supabase
+      .from('user_categories')
+      .select('key, label, icon, color')
+      .order('created_at')
+    if (error || !data) return
+    const cats: CustomCategory[] = data.map((r: any) => ({
+      key:   r.key,
+      label: r.label,
+      icon:  r.icon,
+      color: r.color,
+    }))
     set({ customCategories: cats })
   },
 
-  addCustomCategory: (cat) => {
-    const current = get().customCategories
-    // Evita chave duplicada
-    if (current.some(c => c.key === cat.key)) return
-    const updated = [...current, cat]
-    saveCustomCatsToStorage(updated)
-    set({ customCategories: updated })
+  addCustomCategory: async (cat) => {
+    const { userId, customCategories } = get()
+    if (!userId) return
+    // Evita chave duplicada no store
+    if (customCategories.some(c => c.key === cat.key)) return
+    const { error } = await supabase.from('user_categories').insert({
+      user_id: userId,
+      key:     cat.key,
+      label:   cat.label,
+      icon:    cat.icon,
+      color:   cat.color,
+    } as any)
+    if (error) return
+    set(s => ({ customCategories: [...s.customCategories, cat] }))
   },
 
-  deleteCustomCategory: (key) => {
-    const updated = get().customCategories.filter(c => c.key !== key)
-    saveCustomCatsToStorage(updated)
-    set({ customCategories: updated })
+  deleteCustomCategory: async (key) => {
+    const { userId } = get()
+    if (!userId) return
+    const { error } = await supabase
+      .from('user_categories')
+      .delete()
+      .eq('user_id', userId)
+      .eq('key', key)
+    if (error) return
+    set(s => ({ customCategories: s.customCategories.filter(c => c.key !== key) }))
   },
 
   allCategories: () => {
