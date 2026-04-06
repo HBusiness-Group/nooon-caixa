@@ -47,25 +47,78 @@ export interface NewTransactionPayload {
   installments?: number
 }
 
-// Categoria customizada pelo usuário
 export interface CustomCategory {
-  key: string    // slug único, ex: "marketing"
-  label: string  // nome exibido, ex: "Marketing"
-  icon: string   // emoji
-  color: string  // hex
+  key: string
+  label: string
+  icon: string
+  color: string
+  group?: string   // grupo ao qual pertence (para categorias custom)
 }
 
-// Categorias fixas do sistema (não excluíveis)
-export const SYSTEM_CATEGORIES: CustomCategory[] = [
-  { key: 'business',    label: 'Business',    icon: '💼', color: '#6dd400' },
-  { key: 'acquisition', label: 'Aquisição',   icon: '🛒', color: '#ffb340' },
-  { key: 'loan',        label: 'Empréstimo',  icon: '🔁', color: '#ff5757' },
-  { key: 'transport',   label: 'Transporte',  icon: '🚗', color: '#40b4ff' },
-  { key: 'food',        label: 'Alimentação', icon: '🍽', color: '#c084fc' },
-  { key: 'health',      label: 'Saúde',       icon: '❤',  color: '#fb7185' },
-  { key: 'other',       label: 'Outros',      icon: '📌', color: '#94a3b8' },
+export interface CategoryGroup {
+  key: string
+  label: string
+  color: string       // cor do grupo (para badge/header)
+  emoji: string       // emoji do grupo
+}
+
+// ─── GRUPOS DE CATEGORIAS ────────────────────────────────────────────────────
+export const CATEGORY_GROUPS: CategoryGroup[] = [
+  { key: 'receitas',               label: 'Receitas',                      color: '#22c55e', emoji: '🟢' },
+  { key: 'despesas_pessoais',      label: 'Despesas Pessoais',             color: '#ef4444', emoji: '🔴' },
+  { key: 'despesas_financeiras',   label: 'Despesas Financeiras',          color: '#a855f7', emoji: '🟣' },
+  { key: 'negocios',               label: 'Negócios',                      color: '#3b82f6', emoji: '🔵' },
+  { key: 'patrimonio',             label: 'Patrimônio e Investimentos',    color: '#eab308', emoji: '🟡' },
 ]
 
+// ─── CATEGORIAS DO SISTEMA (não excluíveis) ───────────────────────────────────
+export const SYSTEM_CATEGORIES: CustomCategory[] = [
+  // 🟢 RECEITAS
+  { key: 'receita_pessoal',       label: 'Receita Pessoal',           icon: '💰', color: '#22c55e', group: 'receitas' },
+  { key: 'receita_negocios',      label: 'Receita de Negócios',       icon: '📈', color: '#16a34a', group: 'receitas' },
+  { key: 'emprestimos_recebidos', label: 'Empréstimos Recebidos',     icon: '🤝', color: '#4ade80', group: 'receitas' },
+  { key: 'outras_entradas',       label: 'Outras Entradas',           icon: '➕', color: '#86efac', group: 'receitas' },
+
+  // 🔴 DESPESAS PESSOAIS
+  { key: 'moradia',               label: 'Moradia',                   icon: '🏠', color: '#ef4444', group: 'despesas_pessoais' },
+  { key: 'alimentacao',           label: 'Alimentação',               icon: '🍽️', color: '#f87171', group: 'despesas_pessoais' },
+  { key: 'transporte',            label: 'Transporte',                icon: '🚗', color: '#fca5a5', group: 'despesas_pessoais' },
+  { key: 'saude',                 label: 'Saúde',                     icon: '❤️', color: '#fb7185', group: 'despesas_pessoais' },
+  { key: 'educacao',              label: 'Educação',                  icon: '📚', color: '#f43f5e', group: 'despesas_pessoais' },
+  { key: 'entretenimento',        label: 'Entretenimento',            icon: '🎬', color: '#e11d48', group: 'despesas_pessoais' },
+  { key: 'servicos_assinaturas',  label: 'Serviços e Assinaturas',   icon: '📱', color: '#be123c', group: 'despesas_pessoais' },
+  { key: 'despesas_gerais',       label: 'Despesas Gerais',           icon: '📌', color: '#9f1239', group: 'despesas_pessoais' },
+
+  // 🟣 DESPESAS FINANCEIRAS
+  { key: 'taxas_impostos',        label: 'Taxas e Impostos',          icon: '🏛️', color: '#a855f7', group: 'despesas_financeiras' },
+  { key: 'pagamento_emprestimos', label: 'Pagamento de Empréstimos', icon: '🔁', color: '#c084fc', group: 'despesas_financeiras' },
+  { key: 'juros_multas',          label: 'Juros e Multas',            icon: '⚠️', color: '#d946ef', group: 'despesas_financeiras' },
+
+  // 🔵 NEGÓCIOS
+  { key: 'custos_operacionais',   label: 'Custos Operacionais',       icon: '⚙️', color: '#3b82f6', group: 'negocios' },
+  { key: 'investimentos_negocio', label: 'Investimentos no Negócio', icon: '💼', color: '#60a5fa', group: 'negocios' },
+
+  // 🟡 PATRIMÔNIO E INVESTIMENTOS
+  { key: 'aquisicao_ativos',      label: 'Aquisição de Ativos',       icon: '🏗️', color: '#eab308', group: 'patrimonio' },
+  { key: 'investimentos_fin',     label: 'Investimentos Financeiros', icon: '📊', color: '#facc15', group: 'patrimonio' },
+]
+
+// Helper: retorna categorias agrupadas para renderização em selects/listas
+export function getCategoriesByGroup(): { group: CategoryGroup; categories: CustomCategory[] }[] {
+  return CATEGORY_GROUPS.map(group => ({
+    group,
+    categories: SYSTEM_CATEGORIES.filter(c => c.group === group.key),
+  }))
+}
+
+// Helper: retorna o grupo de uma categoria pelo key
+export function getGroupForCategory(categoryKey: string, allCats: CustomCategory[]): CategoryGroup | undefined {
+  const cat = allCats.find(c => c.key === categoryKey)
+  if (!cat?.group) return undefined
+  return CATEGORY_GROUPS.find(g => g.key === cat.group)
+}
+
+// ─── STORE ───────────────────────────────────────────────────────────────────
 interface AppState {
   userId: string | null
   setUserId: (id: string | null) => void
@@ -83,7 +136,6 @@ interface AppState {
   updateTransactionStatus: (id: string, status: string) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
 
-  // Categorias dinâmicas — persistidas no Supabase
   customCategories: CustomCategory[]
   loadCustomCategories: () => Promise<void>
   addCustomCategory: (cat: CustomCategory) => Promise<void>
@@ -92,6 +144,7 @@ interface AppState {
 
   activeTab: 'registro' | 'calendario' | 'resumo' | 'contas'
   setActiveTab: (tab: AppState['activeTab']) => void
+
   calendarMonth: number
   calendarYear: number
   setCalendarMonth: (m: number, y: number) => void
@@ -103,7 +156,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   accounts: [],
   currentAccountId: null,
-
   loadAccounts: async () => {
     const res = await supabase
       .from('account_balances')
@@ -114,17 +166,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (data.length > 0) {
       const accounts: Account[] = data.map((a: any) => ({
         ...a,
-        current_balance: Number(a.current_balance)
+        current_balance: Number(a.current_balance),
       }))
-      set(s => ({
-        accounts,
-        currentAccountId: s.currentAccountId ?? accounts[0].id
-      }))
+      set(s => ({ accounts, currentAccountId: s.currentAccountId ?? accounts[0].id }))
     }
   },
-
   setCurrentAccount: (id) => set({ currentAccountId: id }),
-
   addAccount: async (data) => {
     const { userId } = get()
     if (!userId) return
@@ -135,19 +182,16 @@ export const useAppStore = create<AppState>((set, get) => ({
       set(s => ({ accounts: [...s.accounts, account] }))
     }
   },
-
   deleteAccount: async (id) => {
     await supabase.from('accounts').update({ is_active: false } as any).eq('id', id)
     set(s => ({
       accounts: s.accounts.filter(a => a.id !== id),
-      currentAccountId: s.currentAccountId === id
-        ? (s.accounts.find(a => a.id !== id)?.id ?? null)
-        : s.currentAccountId
+      currentAccountId:
+        s.currentAccountId === id ? (s.accounts.find(a => a.id !== id)?.id ?? null) : s.currentAccountId,
     }))
   },
 
   transactions: [],
-
   loadTransactions: async () => {
     const res = await supabase
       .from('transactions')
@@ -157,13 +201,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const data: any[] = (res as any).data || []
     set({ transactions: data as Transaction[] })
   },
-
   addTransaction: async (payload) => {
     const { userId } = get()
     if (!userId) return
     const { account_id, description, group_ref, category, amount, type, status, date, installments } = payload
     const n = installments && installments > 1 ? installments : 1
-
     if (n > 1) {
       const res = await supabase
         .from('installment_groups')
@@ -172,7 +214,6 @@ export const useAppStore = create<AppState>((set, get) => ({
         .single()
       const group: any = (res as any).data
       if (!group) return
-
       const rows = Array.from({ length: n }, (_, i) => ({
         user_id: userId,
         account_id,
@@ -193,73 +234,53 @@ export const useAppStore = create<AppState>((set, get) => ({
         group_ref: group_ref || '', category, amount, type, status, date,
       } as any)
     }
-
     await get().loadTransactions()
     await get().loadAccounts()
   },
-
   updateTransactionStatus: async (id, status) => {
     await supabase.from('transactions').update({ status } as any).eq('id', id)
     set(s => ({
       transactions: s.transactions.map(t =>
         t.id === id ? { ...t, status: status as Transaction['status'] } : t
-      )
+      ),
     }))
     await get().loadAccounts()
   },
-
   deleteTransaction: async (id) => {
     await supabase.from('transactions').delete().eq('id', id)
     set(s => ({ transactions: s.transactions.filter(t => t.id !== id) }))
     await get().loadAccounts()
   },
 
-  // ── Categorias — Supabase ──────────────────────────────────
   customCategories: [],
-
   loadCustomCategories: async () => {
     const { data, error } = await supabase
       .from('user_categories')
-      .select('key, label, icon, color')
+      .select('key, label, icon, color, group')
       .order('created_at')
     if (error || !data) return
     const cats: CustomCategory[] = data.map((r: any) => ({
-      key:   r.key,
-      label: r.label,
-      icon:  r.icon,
-      color: r.color,
+      key: r.key, label: r.label, icon: r.icon, color: r.color, group: r.group ?? undefined,
     }))
     set({ customCategories: cats })
   },
-
   addCustomCategory: async (cat) => {
     const { userId, customCategories } = get()
     if (!userId) return
-    // Evita chave duplicada no store
     if (customCategories.some(c => c.key === cat.key)) return
     const { error } = await supabase.from('user_categories').insert({
-      user_id: userId,
-      key:     cat.key,
-      label:   cat.label,
-      icon:    cat.icon,
-      color:   cat.color,
+      user_id: userId, key: cat.key, label: cat.label, icon: cat.icon, color: cat.color, group: cat.group ?? null,
     } as any)
     if (error) return
     set(s => ({ customCategories: [...s.customCategories, cat] }))
   },
-
   deleteCustomCategory: async (key) => {
     const { userId } = get()
     if (!userId) return
-    const { error } = await supabase
-      .from('user_categories')
-      .delete()
-      .eq('user_id', userId)
-      .eq('key', key)
+    const { error } = await supabase.from('user_categories').delete().eq('user_id', userId).eq('key', key)
     if (error) return
     set(s => ({ customCategories: s.customCategories.filter(c => c.key !== key) }))
   },
-
   allCategories: () => {
     const { customCategories } = get()
     return [...SYSTEM_CATEGORIES, ...customCategories]
