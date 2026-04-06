@@ -480,7 +480,7 @@ export default function ContasScreen() {
                           {fmtCurrency(inv.total_amount)} / {fmtCurrency(account.credit_limit!)} ({limitPct.toFixed(0)}%)
                         </span>
                       </div>
-                      <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: '#2a3a2e' }}>
+                      <div className="w-full h-1.5 rounded-full overflow-hidden mb-2" style={{ background: '#2a3a2e' }}>
                         <div
                           className="h-1.5 rounded-full transition-all"
                           style={{
@@ -488,6 +488,14 @@ export default function ContasScreen() {
                             background: limitPct > 80 ? '#ff6b6b' : limitPct > 50 ? '#ffb340' : '#6dd400',
                           }}
                         />
+                      </div>
+                      <div className="flex justify-between text-[10px]">
+                        <span style={{ color: '#4a6844' }}>Limite disponível</span>
+                        <span className="font-['JetBrains_Mono'] font-semibold" style={{
+                          color: (account.credit_limit! - inv.total_amount) <= 0 ? '#ff6b6b' : '#6dd400'
+                        }}>
+                          {fmtCurrency(Math.max(account.credit_limit! - inv.total_amount, 0))}
+                        </span>
                       </div>
                     </div>
                   )}
