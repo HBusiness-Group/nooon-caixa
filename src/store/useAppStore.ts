@@ -345,13 +345,33 @@ ensureInvoice: async (accountId, referenceMonth) => {
   )
   if (existing) return existing
 
-  // Calcula total_amount: soma todas as despesas não pagas e não canceladas da conta
-  // (planned + overdue) — independente do mês, pois representam obrigações em aberto
+  // Calcula total_amount: transações expense dentro do ciclo desta fatura
+  // Ciclo = entre o fechamento do mês anterior (exclusive) e o fechamento deste mês (inclusive)
+  const closeDay = isCreditCard(account.type)
+    ? (account.billing_close_day ?? 10)
+    : (account.overdraft_due_day ?? 0)
+
+  const [refYear, refMonthNum] = refMonth.split('-').map(Number)
+  const prevMonth = refMonthNum === 1
+    ? `${refYear - 1}-12`
+    : `${refYear}-${String(refMonthNum - 1).padStart(2, '0')}`
+
+  const cycleStart = isCreditCard(account.type)
+    ? format(getCloseDate(closeDay, prevMonth), 'yyyy-MM-dd')
+    : format(getOverdraftDueDate(closeDay, prevMonth), 'yyyy-MM-dd')
+
+  const cycleEnd = isCreditCard(account.type)
+    ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
+    : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
+
   const total = transactions
     .filter(t =>
       t.account_id === accountId &&
       t.type === 'expense' &&
-      (t.status === 'planned' || t.status === 'overdue')
+      t.status !== 'cancelled' &&
+      t.status !== 'simulated' &&
+      t.date > cycleStart &&
+      t.date <= cycleEnd
     )
     .reduce((sum, t) => sum + t.amount, 0)
 
