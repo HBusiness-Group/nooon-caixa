@@ -41,7 +41,7 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
     accounts, invoices, loadInvoices,
     ensureInvoice, payInvoiceFull, payInvoicePartial,
     installInvoice, setInvoiceInterest, getInvoiceAuditLog,
-    updateAccountFiduciary,
+    updateAccountFiduciary, loadAccounts,
   } = useAppStore()
 
   const account = accounts.find(a => a.id === accountId)
@@ -135,6 +135,7 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
         overdraft_limit:   overdraftLimit ? parseFloat(overdraftLimit) : null,
       })
     }
+    await loadAccounts()  // re-sincroniza store com limite atualizado
     setSavingConfig(false)
   }
 
