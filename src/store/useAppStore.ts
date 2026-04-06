@@ -331,56 +331,67 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ invoices: data as Invoice[] })
   },
 
-  ensureInvoice: async (accountId, referenceMonth) => {
-    const { userId, accounts } = get()
-    if (!userId) return null
+ensureInvoice: async (accountId, referenceMonth) => {
+  const { userId, accounts, transactions } = get()
+  if (!userId) return null
 
-    const refMonth = referenceMonth || currentReferenceMonth()
-    const account  = accounts.find(a => a.id === accountId)
-    if (!account) return null
+  const refMonth = referenceMonth || currentReferenceMonth()
+  const account  = accounts.find(a => a.id === accountId)
+  if (!account) return null
 
-    // Verifica se já existe
-    const existing = get().invoices.find(
-      inv => inv.account_id === accountId && inv.reference_month === refMonth
+  // Verifica se já existe
+  const existing = get().invoices.find(
+    inv => inv.account_id === accountId && inv.reference_month === refMonth
+  )
+  if (existing) return existing
+
+  // Calcula total_amount somando transações do mês desta conta
+  const [year, month] = refMonth.split('-').map(Number)
+  const monthStr = refMonth // 'YYYY-MM'
+  const total = transactions
+    .filter(t =>
+      t.account_id === accountId &&
+      t.type === 'expense' &&
+      t.status !== 'cancelled' &&
+      t.date.startsWith(monthStr)
     )
-    if (existing) return existing
+    .reduce((sum, t) => sum + t.amount, 0)
 
-    // Calcula datas
-    let closeDate: string
-    let dueDate: string
+  // Calcula datas
+  let closeDate: string
+  let dueDate: string
 
-    if (isCreditCard(account.type)) {
-      const closeDay = account.billing_close_day ?? 10
-      const dueDay   = account.billing_due_day   ?? 20
-      closeDate = format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
-      dueDate   = format(getDueDate(dueDay, refMonth),     'yyyy-MM-dd')
-    } else {
-      // Cheque Especial
-      const dueDay = account.overdraft_due_day ?? 0
-      closeDate = format(getOverdraftDueDate(dueDay, refMonth), 'yyyy-MM-dd')
-      dueDate   = closeDate
-    }
+  if (isCreditCard(account.type)) {
+    const closeDay = account.billing_close_day ?? 10
+    const dueDay   = account.billing_due_day   ?? 20
+    closeDate = format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
+    dueDate   = format(getDueDate(dueDay, refMonth),     'yyyy-MM-dd')
+  } else {
+    const dueDay = account.overdraft_due_day ?? 0
+    closeDate = format(getOverdraftDueDate(dueDay, refMonth), 'yyyy-MM-dd')
+    dueDate   = closeDate
+  }
 
-    const payload = {
-      user_id:         userId,
-      account_id:      accountId,
-      reference_month: refMonth,
-      close_date:      closeDate,
-      due_date:        dueDate,
-      total_amount:    0,
-      paid_amount:     0,
-      status:          'EM_ABERTO' as InvoiceStatus,
-      interest_amount: null,
-      generates_interest: false,
-    }
+  const payload = {
+    user_id:            userId,
+    account_id:         accountId,
+    reference_month:    refMonth,
+    close_date:         closeDate,
+    due_date:           dueDate,
+    total_amount:       Math.round(total * 100) / 100,
+    paid_amount:        0,
+    status:             'EM_ABERTO' as InvoiceStatus,
+    interest_amount:    null,
+    generates_interest: false,
+  }
 
-    const res = await supabase.from('invoices').insert(payload as any).select().single()
-    const created: any = (res as any).data
-    if (!created) return null
+  const res = await supabase.from('invoices').insert(payload as any).select().single()
+  const created: any = (res as any).data
+  if (!created) return null
 
-    set(s => ({ invoices: [created as Invoice, ...s.invoices] }))
-    return created as Invoice
-  },
+  set(s => ({ invoices: [created as Invoice, ...s.invoices] }))
+  return created as Invoice
+},
 
   payInvoiceFull: async (invoiceId, paymentDate) => {
     const { userId, invoices } = get()
