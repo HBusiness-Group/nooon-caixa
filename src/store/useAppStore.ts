@@ -339,14 +339,7 @@ ensureInvoice: async (accountId, referenceMonth) => {
   const account  = accounts.find(a => a.id === accountId)
   if (!account) return null
 
-  // Verifica se já existe
-  const existing = get().invoices.find(
-    inv => inv.account_id === accountId && inv.reference_month === refMonth
-  )
-  if (existing) return existing
-
-  // Calcula total_amount: transações expense dentro do ciclo desta fatura
-  // Ciclo = entre o fechamento do mês anterior (exclusive) e o fechamento deste mês (inclusive)
+  // Calcula ciclo e total SEMPRE — independente de a fatura já existir
   const closeDay = isCreditCard(account.type)
     ? (account.billing_close_day ?? 10)
     : (account.overdraft_due_day ?? 0)
@@ -356,24 +349,45 @@ ensureInvoice: async (accountId, referenceMonth) => {
     ? `${refYear - 1}-12`
     : `${refYear}-${String(refMonthNum - 1).padStart(2, '0')}`
 
+  // cycleStart = fechamento do mês anterior + 1 dia (primeiro dia do ciclo)
   const cycleStart = isCreditCard(account.type)
     ? format(addDays(getCloseDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
     : format(addDays(getOverdraftDueDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
-  
+
+  // cycleEnd = fechamento deste mês (último dia do ciclo)
   const cycleEnd = isCreditCard(account.type)
     ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
-  
-  const total = transactions
-    .filter(t =>
-      t.account_id === accountId &&
-      t.type === 'expense' &&
-      t.status !== 'cancelled' &&
-      t.status !== 'simulated' &&
-      t.date >= cycleStart &&
-      t.date <= cycleEnd
-    )
-    .reduce((sum, t) => sum + t.amount, 0)
+
+  const total = Math.round(
+    transactions
+      .filter(t =>
+        t.account_id === accountId &&
+        t.type === 'expense' &&
+        t.status !== 'cancelled' &&
+        t.status !== 'simulated' &&
+        t.date >= cycleStart &&
+        t.date <= cycleEnd
+      )
+      .reduce((sum, t) => sum + t.amount, 0)
+    * 100) / 100
+
+  // Se já existe — atualiza total_amount se estiver zerado ou diferente
+  const existing = get().invoices.find(
+    inv => inv.account_id === accountId && inv.reference_month === refMonth
+  )
+  if (existing) {
+    if (existing.total_amount !== total && existing.status === 'EM_ABERTO') {
+      await supabase.from('invoices').update({ total_amount: total } as any).eq('id', existing.id)
+      set(s => ({
+        invoices: s.invoices.map(i =>
+          i.id === existing.id ? { ...i, total_amount: total } : i
+        ),
+      }))
+      return { ...existing, total_amount: total }
+    }
+    return existing
+  }
 
   // Calcula datas
   let closeDate: string
