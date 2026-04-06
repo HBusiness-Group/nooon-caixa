@@ -357,20 +357,20 @@ ensureInvoice: async (accountId, referenceMonth) => {
     : `${refYear}-${String(refMonthNum - 1).padStart(2, '0')}`
 
   const cycleStart = isCreditCard(account.type)
-    ? format(getCloseDate(closeDay, prevMonth), 'yyyy-MM-dd')
-    : format(getOverdraftDueDate(closeDay, prevMonth), 'yyyy-MM-dd')
-
+    ? format(addDays(getCloseDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
+    : format(addDays(getOverdraftDueDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
+  
   const cycleEnd = isCreditCard(account.type)
     ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
-
+  
   const total = transactions
     .filter(t =>
       t.account_id === accountId &&
       t.type === 'expense' &&
       t.status !== 'cancelled' &&
       t.status !== 'simulated' &&
-      t.date > cycleStart &&
+      t.date >= cycleStart &&
       t.date <= cycleEnd
     )
     .reduce((sum, t) => sum + t.amount, 0)
