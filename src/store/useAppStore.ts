@@ -345,15 +345,13 @@ ensureInvoice: async (accountId, referenceMonth) => {
   )
   if (existing) return existing
 
-  // Calcula total_amount somando transações do mês desta conta
-  const [year, month] = refMonth.split('-').map(Number)
-  const monthStr = refMonth // 'YYYY-MM'
+  // Calcula total_amount: soma todas as despesas não pagas e não canceladas da conta
+  // (planned + overdue) — independente do mês, pois representam obrigações em aberto
   const total = transactions
     .filter(t =>
       t.account_id === accountId &&
       t.type === 'expense' &&
-      t.status !== 'cancelled' &&
-      t.date.startsWith(monthStr)
+      (t.status === 'planned' || t.status === 'overdue')
     )
     .reduce((sum, t) => sum + t.amount, 0)
 
