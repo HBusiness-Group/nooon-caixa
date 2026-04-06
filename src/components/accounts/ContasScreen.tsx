@@ -101,8 +101,10 @@ export default function ContasScreen() {
   // Garante fatura para todas as contas fiduciárias ativas
   useEffect(() => {
     const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type))
+    if (fiduciaryAccounts.length === 0) return
+    if (transactions.length === 0) return  // aguarda transações carregarem
     fiduciaryAccounts.forEach(a => ensureInvoice(a.id, refMonth))
-  }, [accounts])
+  }, [accounts, transactions])
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
