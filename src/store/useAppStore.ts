@@ -2,7 +2,7 @@
 // src/store/useAppStore.ts — NOOON Caixa V4 #002
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import { addMonths, format } from 'date-fns'
+import { addMonths, addDays, format } from 'date-fns'
 import type { Invoice, InvoiceStatus, InvoiceAuditLog } from '@/types/database'
 import {
   getCloseDate, getDueDate, getOverdraftDueDate,
