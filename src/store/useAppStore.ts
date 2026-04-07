@@ -361,7 +361,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
 ensureInvoice: async (accountId, referenceMonth) => {
-  const { userId, accounts, transactions } = get()
+  const { userId, accounts } = get()
   if (!userId) return null
 
   const refMonth = referenceMonth || currentReferenceMonth()
@@ -373,8 +373,7 @@ ensureInvoice: async (accountId, referenceMonth) => {
     inv => inv.account_id === accountId && inv.reference_month === refMonth
   )
 
-  // Calcula total_amount: transações expense dentro do ciclo desta fatura
-  // Ciclo = entre o fechamento do mês anterior (exclusive) e o fechamento deste mês (inclusive)
+  // Calcula ciclo de datas
   const closeDay = isCreditCard(account.type)
     ? (account.billing_close_day ?? 10)
     : (account.overdraft_due_day ?? 0)
@@ -392,18 +391,21 @@ ensureInvoice: async (accountId, referenceMonth) => {
     ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
 
-  const total = Math.round(get().transactions
+  // Sempre usa get().transactions para garantir dados frescos
+  const currentTransactions = get().transactions
+  const total = Math.round(currentTransactions
     .filter(t => {
       if (t.account_id !== accountId) return false
       if (t.type !== 'expense') return false
       if (t.status === 'cancelled' || t.status === 'simulated') return false
+      // CC Pré-pago: só transações realizadas entram na fatura
       if (isPrepaidCard(account.type) && t.status !== 'completed') return false
       if (t.date < cycleStart || t.date > cycleEnd) return false
       return true
     })
     .reduce((sum, t) => sum + t.amount, 0) * 100) / 100
 
-  // Se já existe e está EM_ABERTO → atualiza total se divergiu
+  // Se já existe → atualiza total se EM_ABERTO e divergiu
   if (existing) {
     if (existing.status === 'EM_ABERTO' && Math.abs(existing.total_amount - total) > 0.001) {
       await supabase.from('invoices').update({ total_amount: total } as any).eq('id', existing.id)
