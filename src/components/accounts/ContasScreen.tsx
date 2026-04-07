@@ -378,13 +378,15 @@ export default function ContasScreen() {
                   >
                     Editar
                   </button>
-                  <button
-                    onClick={() => handleDeleteAccount(account.id)}
-                    className="px-2 py-1 rounded-lg text-[10px] font-bold border transition-all"
-                    style={{ background: 'rgba(255,87,87,0.06)', borderColor: 'rgba(255,87,87,0.2)', color: '#ff7070' }}
-                  >
-                    Excluir
-                  </button>
+                  {!hasTransactions(account.id) && (
+                    <button
+                      onClick={() => handleDeleteAccount(account.id)}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold border transition-all"
+                      style={{ background: 'rgba(255,87,87,0.06)', borderColor: 'rgba(255,87,87,0.2)', color: '#ff7070' }}
+                    >
+                      Excluir
+                    </button>
+                  )}
                 </div>
 
                 {/* erro de exclusão */}
