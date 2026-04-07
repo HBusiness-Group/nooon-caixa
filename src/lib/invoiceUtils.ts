@@ -63,19 +63,31 @@ export function getCloseDate(closeDay: number, referenceMonth: string): Date {
 }
 
 /**
- * Dado um dia de vencimento e um mês de referência ('YYYY-MM'),
+ * Dado um dia de vencimento, dia de fechamento e mês de referência ('YYYY-MM'),
  * retorna a data de vencimento ajustada para dia útil.
- * O vencimento é sempre no mês seguinte ao fechamento.
+ * Regra: se dueDay > closeDay → vencimento no mesmo mês do fechamento.
+ *        se dueDay <= closeDay → vencimento no mês seguinte (caso raro).
  */
-export function getDueDate(dueDay: number, referenceMonth: string): Date {
+export function getDueDate(dueDay: number, referenceMonth: string, closeDay?: number): Date {
   const [year, month] = referenceMonth.split('-').map(Number)
-  // Vencimento cai no mês seguinte
-  const nextMonth = new Date(year, month, 1) // primeiro dia do próximo mês
-  const nextYear  = nextMonth.getFullYear()
-  const nextM     = nextMonth.getMonth() + 1
+
+  // Vencimento no mesmo mês se dueDay > closeDay (regra padrão brasileira)
+  const sameMonth = closeDay !== undefined ? dueDay > closeDay : false
+
+  if (sameMonth) {
+    const daysInMonth = getDaysInMonth(new Date(year, month - 1))
+    const safeDay = Math.min(dueDay, daysInMonth, 28)
+    const raw = new Date(year, month - 1, safeDay)
+    return toNextBusinessDay(raw)
+  }
+
+  // Vencimento no mês seguinte (comportamento legado / fallback)
+  const nextMonth  = new Date(year, month, 1)
+  const nextYear   = nextMonth.getFullYear()
+  const nextM      = nextMonth.getMonth() + 1
   const daysInNext = getDaysInMonth(new Date(nextYear, nextM - 1))
-  const safeDay = Math.min(dueDay, daysInNext, 28)
-  const raw = new Date(nextYear, nextM - 1, safeDay)
+  const safeDay    = Math.min(dueDay, daysInNext, 28)
+  const raw        = new Date(nextYear, nextM - 1, safeDay)
   return toNextBusinessDay(raw)
 }
 
