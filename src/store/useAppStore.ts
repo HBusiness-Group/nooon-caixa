@@ -372,7 +372,6 @@ ensureInvoice: async (accountId, referenceMonth) => {
   const existing = get().invoices.find(
     inv => inv.account_id === accountId && inv.reference_month === refMonth
   )
-  if (existing) return existing
 
   // Calcula total_amount: transações expense dentro do ciclo desta fatura
   // Ciclo = entre o fechamento do mês anterior (exclusive) e o fechamento deste mês (inclusive)
@@ -388,22 +387,34 @@ ensureInvoice: async (accountId, referenceMonth) => {
   const cycleStart = isCreditCard(account.type)
     ? format(addDays(getCloseDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
     : format(addDays(getOverdraftDueDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
-  
+
   const cycleEnd = isCreditCard(account.type)
     ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
-  
-  const total = transactions
+
+  const total = Math.round(get().transactions
     .filter(t => {
       if (t.account_id !== accountId) return false
       if (t.type !== 'expense') return false
       if (t.status === 'cancelled' || t.status === 'simulated') return false
-      // CC Pré-pago: só conta o que foi realizado
       if (isPrepaidCard(account.type) && t.status !== 'completed') return false
       if (t.date < cycleStart || t.date > cycleEnd) return false
       return true
     })
-    .reduce((sum, t) => sum + t.amount, 0)
+    .reduce((sum, t) => sum + t.amount, 0) * 100) / 100
+
+  // Se já existe e está EM_ABERTO → atualiza total se divergiu
+  if (existing) {
+    if (existing.status === 'EM_ABERTO' && Math.abs(existing.total_amount - total) > 0.001) {
+      await supabase.from('invoices').update({ total_amount: total } as any).eq('id', existing.id)
+      const updated = { ...existing, total_amount: total }
+      set(s => ({
+        invoices: s.invoices.map(i => i.id === existing.id ? updated : i)
+      }))
+      return updated as Invoice
+    }
+    return existing
+  }
 
   // Calcula datas
   let closeDate: string
