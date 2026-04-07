@@ -437,10 +437,9 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
                 </div>
               </div>
             )}
-              </div>
-            )}
           </div>
-        ))}
+          )
+        )}
 
         {/* ── ABA: CONFIG ─────────────────────────────────────────────────── */}
         {tab === 'config' && (
