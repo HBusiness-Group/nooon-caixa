@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useAppStore, isCreditCard, isOverdraft } from '@/store/useAppStore'
+import { useAppStore, isCreditCard, isCreditCardNormal, isPrepaidCard, isOverdraft } from '@/store/useAppStore'
 import { fmtCurrency } from '@/lib/utils'
 import type { Invoice, InvoiceStatus } from '@/types/database'
 
@@ -55,6 +55,7 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
 
   // ── Abas ────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<'fatura' | 'config' | 'historico'>('fatura')
+  const [invoiceLoading, setInvoiceLoading] = useState(false)
 
   // ── Estados para modais de ação ──────────────────────────────────────────
   const [action, setAction]         = useState<'pago' | 'parcial' | 'parcelado' | null>(null)
@@ -79,7 +80,8 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
 
   useEffect(() => {
     if (!invoice) {
-      ensureInvoice(accountId, refMonth)
+      setInvoiceLoading(true)
+      ensureInvoice(accountId, refMonth).finally(() => setInvoiceLoading(false))
     }
   }, [accountId, refMonth, invoice])
 
@@ -174,7 +176,7 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
               </h2>
             </div>
             <div className="text-[11px] mt-0.5" style={{ color: '#7ab070' }}>
-              {isCC ? 'Cartão de Crédito' : 'Cheque Especial'} · {refMonth}
+              {isCreditCardNormal(account.type) ? 'Cartão de Crédito' : isPrepaidCard(account.type) ? 'Cartão Pré-pago' : 'Cheque Especial'} · {refMonth}
             </div>
           </div>
           {invoice && <StatusBadge status={invoice.status} />}
@@ -213,7 +215,16 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
         </div>
 
         {/* ── ABA: FATURA ─────────────────────────────────────────────────── */}
-        {tab === 'fatura' && invoice && (
+        {tab === 'fatura' && (
+          invoiceLoading ? (
+            <div className="text-center py-10 text-sm" style={{ color: '#7ab070' }}>
+              Carregando fatura...
+            </div>
+          ) : !invoice ? (
+            <div className="text-center py-10 text-sm" style={{ color: '#7ab070' }}>
+              Nenhuma fatura encontrada para este período.
+            </div>
+          ) : (
           <div>
             {/* Cards de saldo */}
             <div className="grid grid-cols-3 gap-2 mb-5">
@@ -426,8 +437,10 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
                 </div>
               </div>
             )}
+              </div>
+            )}
           </div>
-        )}
+        ))}
 
         {/* ── ABA: CONFIG ─────────────────────────────────────────────────── */}
         {tab === 'config' && (
