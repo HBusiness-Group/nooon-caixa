@@ -93,34 +93,8 @@ export default function ContasScreen() {
   const [transferDate, setTransferDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [transferDesc, setTransferDesc] = useState('Transferência')
 
-  // ── Mês de referência da fatura por conta (= mês do vencimento) ─────────
-  const today = new Date()
-
-  function getRefMonthForAccount(account: any): string {
-    if (isCreditCard(account.type)) {
-      const closeDay = account.billing_close_day ?? 10
-      const dueDay   = account.billing_due_day   ?? 20
-      // Calcula o due_date do ciclo atual para determinar o refMonth
-      // Tenta o mês corrente primeiro; se o due_date já passou, avança um mês
-      const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-      const dueThisMonth = getDueDateForRef(closeDay, dueDay, currentMonth)
-      // Se vence no mês corrente ou futuro, usa esse mês
-      return dueThisMonth
-    }
-    // Cheque especial: usa mês corrente
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-  }
-
-  function getDueDateForRef(closeDay: number, dueDay: number, refM: string): string {
-    const [y, m] = refM.split('-').map(Number)
-    // dueDay > closeDay → vence no mesmo mês
-    if (dueDay > closeDay) return refM
-    // dueDay <= closeDay → vence no mês seguinte
-    const next = new Date(y, m, 1)
-    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
-  }
-
-  // refMonth global (para contas sem billing_close_day definido)
+  // ── Mês corrente para fatura ─────────────────────────────────────────────
+  const today    = new Date()
   const refMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
 
   useEffect(() => {
@@ -132,15 +106,27 @@ export default function ContasScreen() {
     const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type))
     if (fiduciaryAccounts.length === 0) return
     if (transactions.length === 0) return
-    fiduciaryAccounts.forEach(a => ensureInvoice(a.id, getRefMonthForAccount(a)))
+    fiduciaryAccounts.forEach(a => ensureInvoice(a.id, refMonth))
   }, [accounts, transactions])
+
+  // Label do mês da fatura = mês do vencimento (apenas visual)
+  function getInvoiceMonthLabel(account: any): string {
+    if (isCreditCard(account.type)) {
+      const closeDay = account.billing_close_day ?? 10
+      const dueDay   = account.billing_due_day   ?? 20
+      const y = today.getFullYear()
+      const m = today.getMonth() + 1
+      if (dueDay > closeDay) return `${y}-${String(m).padStart(2, '0')}`
+      const next = new Date(y, m, 1)
+      return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
+    }
+    return refMonth
+  }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
   function getInvoice(accountId: string) {
-    const account = accounts.find(a => a.id === accountId)
-    const ref = account ? getRefMonthForAccount(account) : refMonth
-    return invoices.find(i => i.account_id === accountId && i.reference_month === ref)
+    return invoices.find(i => i.account_id === accountId && i.reference_month === refMonth)
   }
 
   function hasTransactions(accountId: string) {
@@ -505,7 +491,7 @@ export default function ContasScreen() {
                         )}
                       </div>
                       <div className="text-[11px] flex items-center gap-1.5" style={{ color: '#6a9060' }}>
-                        {ACCOUNT_TYPE_LABEL[account.type]} · {getRefMonthForAccount(account)}
+                        {ACCOUNT_TYPE_LABEL[account.type]} · {getInvoiceMonthLabel(account)}
                         {isCreditCardNormal(account.type) && (
                           <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider" style={{ background: 'rgba(109,212,0,0.12)', color: '#6dd400' }}>crédito</span>
                         )}
