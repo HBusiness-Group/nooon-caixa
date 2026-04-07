@@ -66,19 +66,14 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
   const [savingConfig, setSavingConfig]       = useState(false)
 
   useEffect(() => {
-    loadInvoices()
-    loadTransactions()
-  }, [])
-
-  useEffect(() => {
-    if (!invoice) {
+    async function init() {
+      await loadInvoices()
+      await loadTransactions()
       setInvoiceLoading(true)
-      ensureInvoice(accountId, refMonth).finally(() => setInvoiceLoading(false))
-    } else if (invoice.status === 'EM_ABERTO') {
-      // Sempre recalcula fatura EM_ABERTO para refletir mudanças nos registros
-      setInvoiceLoading(true)
-      ensureInvoice(accountId, refMonth).finally(() => setInvoiceLoading(false))
+      await ensureInvoice(accountId, refMonth)
+      setInvoiceLoading(false)
     }
+    init()
   }, [accountId, refMonth])
 
   useEffect(() => {
