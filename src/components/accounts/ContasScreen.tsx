@@ -378,7 +378,11 @@ export default function ContasScreen() {
             {fiduciaryAccounts.map(account => {
               const inv         = getInvoice(account.id)
               const isPending   = inv && inv.status !== 'PAGO'
-              const remaining   = inv ? inv.total_amount - inv.paid_amount : 0
+              const invoiceRemaining = inv ? inv.total_amount - inv.paid_amount : null
+              // Se não há fatura ou fatura zerada, usa current_balance da conta
+              const remaining   = (invoiceRemaining !== null && invoiceRemaining > 0)
+                ? invoiceRemaining
+                : (account.current_balance ?? account.initial_balance)
               const limitPct    = isCreditCard(account.type) && account.credit_limit
                 ? Math.min((inv?.total_amount ?? 0) / account.credit_limit * 100, 100)
                 : null
@@ -448,12 +452,12 @@ export default function ContasScreen() {
                     <div className="text-right flex-shrink-0">
                       <div
                         className="font-['JetBrains_Mono'] font-bold"
-                        style={{ fontSize: 15, color: remaining > 0 ? '#ff6b6b' : '#6dd400' }}
+                        style={{ fontSize: 15, color: remaining < 0 ? '#ff6b6b' : remaining > 0 ? '#ff6b6b' : '#6dd400' }}
                       >
-                        {fmtCurrency(remaining)}
+                        {fmtCurrency(Math.abs(remaining))}
                       </div>
                       <div className="text-[10px]" style={{ color: '#4a6844' }}>
-                        {remaining > 0 ? 'em aberto' : 'quitado'}
+                        {invoiceRemaining !== null && invoiceRemaining > 0 ? 'em aberto' : 'saldo atual'}
                       </div>
                     </div>
 
