@@ -243,8 +243,8 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
                   <div className="flex justify-between text-[10px]">
                     <span style={{ color: '#7ab070' }}>Limite disponível</span>
                     <span className="font-['JetBrains_Mono'] font-semibold"
-                      style={{ color: creditLimit_ - totalFatura <= 0 ? '#ff6b6b' : '#6dd400' }}>
-                      {fmtCurrency(Math.max(creditLimit_ - totalFatura, 0))}
+                      style={{ color: (account.current_balance ?? 0) <= 0 ? '#ff6b6b' : '#6dd400' }}>
+                      {fmtCurrency(Math.max(account.current_balance ?? 0, 0))}
                     </span>
                   </div>
                 </div>
