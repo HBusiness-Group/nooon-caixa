@@ -3,20 +3,21 @@
 
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
-import { useAppStore, isFiduciary, isCreditCard, isOverdraft } from '@/store/useAppStore'
+import { useAppStore, isFiduciary, isCreditCard, isCreditCardNormal, isPrepaidCard, isOverdraft } from '@/store/useAppStore'
 import { fmtCurrency } from '@/lib/utils'
 import InvoicePanel from '@/components/fiduciary/InvoicePanel'
 
 // ── Constantes ───────────────────────────────────────────────────────────────
 
 const ACCOUNT_TYPE_OPTIONS = [
-  { value: 'checking',    label: 'Conta Corrente',    icon: '🏦' },
-  { value: 'savings',     label: 'Poupança',           icon: '🐷' },
-  { value: 'wallet',      label: 'Carteira',           icon: '👛' },
-  { value: 'investment',  label: 'Investimento',       icon: '📊' },
-  { value: 'credit_card', label: 'Cartão de Crédito',  icon: '💳' },
-  { value: 'overdraft',   label: 'Cheque Especial',    icon: '🏦' },
-  { value: 'other',       label: 'Outro',              icon: '📁' },
+  { value: 'checking',     label: 'Conta Corrente',       icon: '🏦' },
+  { value: 'savings',      label: 'Poupança',              icon: '🐷' },
+  { value: 'wallet',       label: 'Carteira',              icon: '👛' },
+  { value: 'investment',   label: 'Investimento',          icon: '📊' },
+  { value: 'credit_card',  label: 'Cartão de Crédito',     icon: '💳' },
+  { value: 'prepaid_card', label: 'Cartão Pré-pago',       icon: '💳' },
+  { value: 'overdraft',    label: 'Cheque Especial',        icon: '🏦' },
+  { value: 'other',        label: 'Outro',                  icon: '📁' },
 ]
 
 const COLOR_OPTIONS = [
@@ -26,23 +27,25 @@ const COLOR_OPTIONS = [
 ]
 
 const ACCOUNT_TYPE_LABEL: Record<string, string> = {
-  checking:    'Conta Corrente',
-  savings:     'Poupança',
-  wallet:      'Carteira',
-  investment:  'Investimento',
-  credit_card: 'Cartão de Crédito',
-  overdraft:   'Cheque Especial',
-  other:       'Outro',
+  checking:     'Conta Corrente',
+  savings:      'Poupança',
+  wallet:       'Carteira',
+  investment:   'Investimento',
+  credit_card:  'Cartão de Crédito',
+  prepaid_card: 'Cartão Pré-pago',
+  overdraft:    'Cheque Especial',
+  other:        'Outro',
 }
 
 const ACCOUNT_TYPE_ICON: Record<string, string> = {
-  checking:    '🏦',
-  savings:     '🐷',
-  wallet:      '👛',
-  investment:  '📊',
-  credit_card: '💳',
-  overdraft:   '🏦',
-  other:       '📁',
+  checking:     '🏦',
+  savings:      '🐷',
+  wallet:       '👛',
+  investment:   '📊',
+  credit_card:  '💳',
+  prepaid_card: '💳',
+  overdraft:    '🏦',
+  other:        '📁',
 }
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
@@ -234,6 +237,34 @@ export default function ContasScreen() {
   const isNewCC = isCreditCard(newType)
   const isNewCE = isOverdraft(newType)
 
+  // Sufixo automático por tipo
+  const TYPE_SUFFIX: Record<string, string> = {
+    savings:      'Poupança',
+    credit_card:  'CC',
+    prepaid_card: 'CC PP',
+    overdraft:    'CE',
+    wallet:       'Carteira',
+    investment:   'Invest',
+  }
+
+  // Nome base = tudo antes do sufixo conhecido (para trocar ao mudar tipo)
+  function applyTypeSuffix(currentName: string, newType: string) {
+    const knownSuffixes = Object.values(TYPE_SUFFIX)
+    const trimmed = currentName.trim()
+    // Remove sufixo anterior se existir
+    const base = knownSuffixes.reduce((n, s) => {
+      if (n.endsWith(` ${s}`)) return n.slice(0, -(s.length + 1)).trim()
+      return n
+    }, trimmed)
+    const suffix = TYPE_SUFFIX[newType]
+    return suffix ? `${base} ${suffix}`.trim() : base
+  }
+
+  function handleTypeChange(t: string) {
+    setNewType(t)
+    if (newName.trim()) setNewName(applyTypeSuffix(newName, t))
+  }
+
   // ── Totais ───────────────────────────────────────────────────────────────
 
   const totalDisponivel = accounts
@@ -378,11 +409,7 @@ export default function ContasScreen() {
             {fiduciaryAccounts.map(account => {
               const inv         = getInvoice(account.id)
               const isPending   = inv && inv.status !== 'PAGO'
-              const invoiceRemaining = inv ? inv.total_amount - inv.paid_amount : null
-              // Se não há fatura ou fatura zerada, usa current_balance da conta
-              const remaining   = (invoiceRemaining !== null && invoiceRemaining > 0)
-                ? invoiceRemaining
-                : (account.current_balance ?? account.initial_balance)
+              const remaining   = inv ? inv.total_amount - inv.paid_amount : 0
               const limitPct    = isCreditCard(account.type) && account.credit_limit
                 ? Math.min((inv?.total_amount ?? 0) / account.credit_limit * 100, 100)
                 : null
@@ -443,8 +470,14 @@ export default function ContasScreen() {
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px]" style={{ color: '#6a9060' }}>
+                      <div className="text-[11px] flex items-center gap-1.5" style={{ color: '#6a9060' }}>
                         {ACCOUNT_TYPE_LABEL[account.type]} · {refMonth}
+                        {isCreditCardNormal(account.type) && (
+                          <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider" style={{ background: 'rgba(109,212,0,0.12)', color: '#6dd400' }}>crédito</span>
+                        )}
+                        {isPrepaidCard(account.type) && (
+                          <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider" style={{ background: 'rgba(91,200,255,0.12)', color: '#5bc8ff' }}>pré-pago</span>
+                        )}
                       </div>
                     </div>
 
@@ -452,27 +485,38 @@ export default function ContasScreen() {
                     <div className="text-right flex-shrink-0">
                       <div
                         className="font-['JetBrains_Mono'] font-bold"
-                        style={{ fontSize: 15, color: remaining < 0 ? '#ff6b6b' : remaining > 0 ? '#ff6b6b' : '#6dd400' }}
+                        style={{ fontSize: 15, color: remaining > 0 ? '#ff6b6b' : '#6dd400' }}
                       >
-                        {fmtCurrency(Math.abs(remaining))}
+                        {fmtCurrency(remaining)}
                       </div>
                       <div className="text-[10px]" style={{ color: '#4a6844' }}>
-                        {invoiceRemaining !== null && invoiceRemaining > 0 ? 'em aberto' : 'saldo atual'}
+                        {remaining > 0 ? 'em aberto' : 'quitado'}
                       </div>
                     </div>
 
-                    {/* botão fatura */}
-                    <button
-                      onClick={() => setInvoicePanelId(account.id)}
-                      className="ml-1 px-2.5 py-2 rounded-lg text-[11px] font-bold border transition-all flex-shrink-0"
-                      style={{
-                        background:  isPending ? 'rgba(255,107,107,0.1)' : 'rgba(109,212,0,0.08)',
-                        borderColor: isPending ? 'rgba(255,107,107,0.35)' : 'rgba(109,212,0,0.2)',
-                        color:       isPending ? '#ff6b6b' : '#6dd400',
-                      }}
-                    >
-                      {isPending ? '⚠ Fatura' : '📋 Fatura'}
-                    </button>
+                    {/* botões: fatura + excluir */}
+                    <div className="flex flex-col gap-1.5 ml-1 flex-shrink-0">
+                      <button
+                        onClick={() => setInvoicePanelId(account.id)}
+                        className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all"
+                        style={{
+                          background:  isPending ? 'rgba(255,107,107,0.1)' : 'rgba(109,212,0,0.08)',
+                          borderColor: isPending ? 'rgba(255,107,107,0.35)' : 'rgba(109,212,0,0.2)',
+                          color:       isPending ? '#ff6b6b' : '#6dd400',
+                        }}
+                      >
+                        {isPending ? '⚠ Fatura' : '📋 Fatura'}
+                      </button>
+                      {!hasTransactions(account.id) && (
+                        <button
+                          onClick={() => handleDeleteAccount(account.id)}
+                          className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all"
+                          style={{ background: 'rgba(255,87,87,0.06)', borderColor: 'rgba(255,87,87,0.2)', color: '#ff7070' }}
+                        >
+                          Excluir
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* barra de limite (CC) */}
@@ -549,7 +593,7 @@ export default function ContasScreen() {
             {/* tipo */}
             <div className="mb-3">
               <label className={labelCls} style={{ color: '#7ab070' }}>Tipo de conta</label>
-              <select value={newType} onChange={e => setNewType(e.target.value)} className={inputCls} style={inputStyle}>
+              <select value={newType} onChange={e => handleTypeChange(e.target.value)} className={inputCls} style={inputStyle}>
                 {ACCOUNT_TYPE_OPTIONS.map(o => (
                   <option key={o.value} value={o.value} style={{ background: '#223026' }}>
                     {o.icon} {o.label}
