@@ -383,10 +383,18 @@ ensureInvoice: async (accountId, referenceMonth) => {
     ? `${refYear - 1}-12`
     : `${refYear}-${String(refMonthNum - 1).padStart(2, '0')}`
 
-  const cycleStart = isCreditCard(account.type)
-    ? format(addDays(getCloseDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
-    : format(addDays(getOverdraftDueDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
+  // cycleStart usa a data NOMINAL (sem ajuste de dia útil) para não excluir
+  // dias válidos quando o fechamento cai em fim de semana/feriado
+  const getRawCloseDate = (day: number, refM: string): Date => {
+    const [y, m] = refM.split('-').map(Number)
+    const daysInM = new Date(y, m, 0).getDate()
+    const safeD = Math.min(day, daysInM, 28)
+    return new Date(y, m - 1, safeD)
+  }
 
+  const cycleStart = format(addDays(getRawCloseDate(closeDay, prevMonth), 1), 'yyyy-MM-dd')
+
+  // cycleEnd usa a data ajustada (dia útil) — é a data oficial de fechamento
   const cycleEnd = isCreditCard(account.type)
     ? format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
