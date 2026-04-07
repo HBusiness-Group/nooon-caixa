@@ -245,13 +245,21 @@ export default function CalendarioScreen() {
                     // ── ATRASADOS ──
                     if (row.key === 'overdue') {
                       const overdueTxs = (txByDay[day.ds] || []).filter(t => t.status === 'overdue')
+                      const visibleOv = overdueTxs.slice(0, 2)
+                      const restOv = overdueTxs.slice(2)
+                      const restOvTotal = restOv.reduce((s, t) => s + t.amount, 0)
                       return (
                         <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
-                          {overdueTxs.slice(0, 2).map((t, ti) => (
+                          {visibleOv.map((t, ti) => (
                             <div key={ti} className="bg-[rgba(255,87,87,0.12)] text-[#ff5757] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
                               {fmtValueK(t.amount, t.type)}
                             </div>
                           ))}
+                          {restOv.length > 0 && (
+                            <div className="bg-[rgba(255,87,87,0.12)] text-[#ff5757] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
+                              +{fmtValueK(restOvTotal, 'expense')}
+                            </div>
+                          )}
                         </div>
                       )
                     }
@@ -259,9 +267,12 @@ export default function CalendarioScreen() {
                     // ── ENTRADA ──
                     if (row.key === 'income') {
                       const incomeTxs = (txByDay[day.ds] || []).filter(t => t.type === 'income')
+                      const visible = incomeTxs.slice(0, 2)
+                      const rest = incomeTxs.slice(2)
+                      const restTotal = rest.reduce((s, t) => s + t.amount, 0)
                       return (
                         <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
-                          {incomeTxs.slice(0, 2).map((t, ti) => {
+                          {visible.map((t, ti) => {
                             const color = t.status === 'simulated'
                               ? 'bg-[rgba(192,132,252,0.12)] text-[#c084fc]'
                               : t.status === 'completed'
@@ -273,15 +284,23 @@ export default function CalendarioScreen() {
                               </div>
                             )
                           })}
+                          {rest.length > 0 && (
+                            <div className="bg-[rgba(109,212,0,0.08)] text-[#6dd400] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
+                              +{fmtValueK(restTotal, 'income')}
+                            </div>
+                          )}
                         </div>
                       )
                     }
 
                     // ── SAÍDA ──
                     const expenseTxs = (txByDay[day.ds] || []).filter(t => t.type === 'expense' && t.status !== 'overdue')
+                    const visibleExp = expenseTxs.slice(0, 2)
+                    const restExp = expenseTxs.slice(2)
+                    const restExpTotal = restExp.reduce((s, t) => s + t.amount, 0)
                     return (
                       <div key={i} className={`min-h-[28px] bg-[#172010] border rounded-[4px] p-[2px] flex flex-col gap-[1px] ${isToday ? 'border-[#6dd400]' : 'border-[rgba(109,212,0,0.07)]'}`}>
-                        {expenseTxs.slice(0, 2).map((t, ti) => {
+                        {visibleExp.map((t, ti) => {
                           const color = t.status === 'simulated'
                             ? 'bg-[rgba(192,132,252,0.12)] text-[#c084fc]'
                             : t.status === 'completed'
@@ -293,6 +312,11 @@ export default function CalendarioScreen() {
                             </div>
                           )
                         })}
+                        {restExp.length > 0 && (
+                          <div className="bg-[rgba(255,87,87,0.1)] text-[#ff7070] rounded-[2px] text-center font-['JetBrains_Mono'] text-[7px] font-semibold px-[1px] leading-[1.4]">
+                            +{fmtValueK(restExpTotal, 'expense')}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
