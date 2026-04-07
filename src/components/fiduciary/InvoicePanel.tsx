@@ -45,26 +45,7 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
   const isCE    = account ? isOverdraft(account.type)  : false
 
   const today    = new Date()
-
-  // refMonth = mês do vencimento da fatura, não o mês corrente
-  function calcRefMonth(): string {
-    if (!account) return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-    if (isCreditCard(account.type)) {
-      const closeDay = account.billing_close_day ?? 10
-      const dueDay   = account.billing_due_day   ?? 20
-      const currM    = today.getMonth() + 1
-      const currY    = today.getFullYear()
-      const currentMonth = `${currY}-${String(currM).padStart(2, '0')}`
-      // dueDay > closeDay → vence no mesmo mês
-      if (dueDay > closeDay) return currentMonth
-      // vence no mês seguinte
-      const next = new Date(currY, currM, 1)
-      return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
-    }
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-  }
-
-  const refMonth = calcRefMonth()
+  const refMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   const invoice  = invoices.find(i => i.account_id === accountId && i.reference_month === refMonth)
 
   const [tab, setTab]                       = useState<'fatura' | 'config' | 'historico'>('fatura')
