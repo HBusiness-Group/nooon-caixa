@@ -129,11 +129,21 @@ export function getGroupForCategory(categoryKey: string, allCats: CustomCategory
 // ─── HELPERS: contas fiduciárias ─────────────────────────────────────────────
 
 export function isFiduciary(type: string): boolean {
-  return type === 'credit_card' || type === 'overdraft'
+  return type === 'credit_card' || type === 'prepaid_card' || type === 'overdraft'
 }
 
 export function isCreditCard(type: string): boolean {
+  return type === 'credit_card' || type === 'prepaid_card'
+}
+
+/** CC Normal (crédito bancário): gastos sempre Realizados, limite fixo */
+export function isCreditCardNormal(type: string): boolean {
   return type === 'credit_card'
+}
+
+/** CC Pré-pago: fluxo normal de status, limite abastecido */
+export function isPrepaidCard(type: string): boolean {
+  return type === 'prepaid_card'
 }
 
 export function isOverdraft(type: string): boolean {
@@ -280,9 +290,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   addTransaction: async (payload) => {
-    const { userId } = get()
+    const { userId, accounts } = get()
     if (!userId) return
-    const { account_id, description, group_ref, category, amount, type, status, date, installments } = payload
+    const { account_id, description, group_ref, category, amount, type, date, installments } = payload
+    let { status } = payload
+
+    // CC Normal: todo lançamento é automaticamente Realizado
+    const account = accounts.find(a => a.id === account_id)
+    if (account && isCreditCardNormal(account.type) && type === 'expense') {
+      status = 'completed'
+    }
+
     const n = installments && installments > 1 ? installments : 1
     if (n > 1) {
       const res = await supabase
@@ -376,14 +394,15 @@ ensureInvoice: async (accountId, referenceMonth) => {
     : format(getOverdraftDueDate(closeDay, refMonth), 'yyyy-MM-dd')
   
   const total = transactions
-    .filter(t =>
-      t.account_id === accountId &&
-      t.type === 'expense' &&
-      t.status !== 'cancelled' &&
-      t.status !== 'simulated' &&
-      t.date >= cycleStart &&
-      t.date <= cycleEnd
-    )
+    .filter(t => {
+      if (t.account_id !== accountId) return false
+      if (t.type !== 'expense') return false
+      if (t.status === 'cancelled' || t.status === 'simulated') return false
+      // CC Pré-pago: só conta o que foi realizado
+      if (isPrepaidCard(account.type) && t.status !== 'completed') return false
+      if (t.date < cycleStart || t.date > cycleEnd) return false
+      return true
+    })
     .reduce((sum, t) => sum + t.amount, 0)
 
   // Calcula datas
