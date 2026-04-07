@@ -34,7 +34,7 @@ function StatusBadge({ status }: { status: InvoiceStatus }) {
 
 export default function InvoicePanel({ accountId, onClose }: Props) {
   const {
-    accounts, invoices, loadInvoices,
+    accounts, invoices, transactions, loadInvoices, loadTransactions,
     ensureInvoice, payInvoiceFull, payInvoicePartial,
     installInvoice, setInvoiceInterest, getInvoiceAuditLog,
     updateAccountFiduciary, loadAccounts,
@@ -65,14 +65,21 @@ export default function InvoicePanel({ accountId, onClose }: Props) {
   const [overdraftLimit, setOverdraftLimit]   = useState(String(account?.overdraft_limit   ?? ''))
   const [savingConfig, setSavingConfig]       = useState(false)
 
-  useEffect(() => { loadInvoices() }, [])
+  useEffect(() => {
+    loadInvoices()
+    loadTransactions()
+  }, [])
 
   useEffect(() => {
     if (!invoice) {
       setInvoiceLoading(true)
       ensureInvoice(accountId, refMonth).finally(() => setInvoiceLoading(false))
+    } else if (invoice.status === 'EM_ABERTO') {
+      // Sempre recalcula fatura EM_ABERTO para refletir mudanças nos registros
+      setInvoiceLoading(true)
+      ensureInvoice(accountId, refMonth).finally(() => setInvoiceLoading(false))
     }
-  }, [accountId, refMonth, invoice])
+  }, [accountId, refMonth])
 
   useEffect(() => {
     if (tab === 'historico' && invoice) {
