@@ -2,7 +2,7 @@
 
 export type TransactionType   = 'income' | 'expense'
 export type TransactionStatus = 'planned' | 'completed' | 'cancelled' | 'overdue' | 'simulated'
-export type AccountType       = 'checking' | 'savings' | 'credit_card' | 'overdraft' | 'wallet' | 'investment' | 'other'
+export type AccountType       = 'checking' | 'savings' | 'credit_card' | 'prepaid_card' | 'overdraft' | 'wallet' | 'investment' | 'other'
 
 /** Status de fatura / obrigação fiduciária */
 export type InvoiceStatus = 'EM_ABERTO' | 'PARCIAL' | 'PARCELADO' | 'PAGO'
