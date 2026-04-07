@@ -546,9 +546,9 @@ export default function ContasScreen() {
                       <div className="flex justify-between text-[10px]">
                         <span style={{ color: '#4a6844' }}>Limite disponível</span>
                         <span className="font-['JetBrains_Mono'] font-semibold" style={{
-                          color: (account.credit_limit! - inv.total_amount) <= 0 ? '#ff6b6b' : '#6dd400'
+                          color: (account.current_balance ?? 0) <= 0 ? '#ff6b6b' : '#6dd400'
                         }}>
-                          {fmtCurrency(Math.max(account.credit_limit! - inv.total_amount, 0))}
+                          {fmtCurrency(Math.max(account.current_balance ?? 0, 0))}
                         </span>
                       </div>
                     </div>
