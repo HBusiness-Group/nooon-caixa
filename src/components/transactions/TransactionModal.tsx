@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAppStore, getCategoriesByGroup, SYSTEM_CATEGORIES } from '@/store/useAppStore'
+import { useAppStore, getCategoriesByGroup, SYSTEM_CATEGORIES, isCreditCardNormal } from '@/store/useAppStore'
 import { fmtCurrency } from '@/lib/utils'
 import { addMonths, format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -58,6 +58,10 @@ export default function TransactionModal({ onClose, editTx }: Props) {
   const parcVal = parseFloat(valor) / parcN
   const lastDate = parcN > 1 ? format(addMonths(new Date(date + 'T12:00:00'), parcN - 1), 'dd/MM/yyyy') : null
   const isOverdue = editTx?.status === 'overdue'
+
+  // CC Normal: status sempre Realizado, não editável pelo usuário
+  const selectedAccount = accounts.find(a => a.id === accountId)
+  const isNormalCC = selectedAccount ? isCreditCardNormal(selectedAccount.type) : false
 
   async function handleSave() {
     if (!desc.trim() || !valor || !date || !accountId) return
@@ -208,17 +212,26 @@ export default function TransactionModal({ onClose, editTx }: Props) {
             <label className="block text-[10px] font-bold uppercase tracking-widest mb-1.5" style={{ color: '#7ab070' }}>
               Status
             </label>
-            <select
-              value={status}
-              onChange={e => setStatus(e.target.value as TransactionStatus)}
-              className={inputCls}
-              style={inputStyle}
-            >
-              <option value="completed"  style={{ background: '#223026' }}>✓ Realizado</option>
-              <option value="planned"    style={{ background: '#223026' }}>◷ Planejado</option>
-              <option value="overdue"    style={{ background: '#223026' }}>⚠ Atrasado</option>
-              <option value="simulated"  style={{ background: '#223026' }}>◈ Simulado</option>
-            </select>
+            {isNormalCC && tipo === 'expense' ? (
+              <div
+                className="w-full rounded-lg px-3 py-2.5 text-sm flex items-center gap-2"
+                style={{ background: 'rgba(109,212,0,0.06)', border: '1px solid rgba(109,212,0,0.2)', color: '#6dd400' }}
+              >
+                ✓ Realizado automaticamente
+              </div>
+            ) : (
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as TransactionStatus)}
+                className={inputCls}
+                style={inputStyle}
+              >
+                <option value="completed"  style={{ background: '#223026' }}>✓ Realizado</option>
+                <option value="planned"    style={{ background: '#223026' }}>◷ Planejado</option>
+                <option value="overdue"    style={{ background: '#223026' }}>⚠ Atrasado</option>
+                <option value="simulated"  style={{ background: '#223026' }}>◈ Simulado</option>
+              </select>
+            )}
           </div>
         </div>
 
