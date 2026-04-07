@@ -413,32 +413,34 @@ ensureInvoice: async (accountId, referenceMonth) => {
     })
     .reduce((sum, t) => sum + t.amount, 0) * 100) / 100
 
-  // Se já existe → atualiza total se EM_ABERTO e divergiu
+  // Calcula datas corretas
+  let closeDate: string
+  let dueDate: string
+
+  if (isCreditCard(account.type)) {
+    const closeDay_ = account.billing_close_day ?? 10
+    const dueDay_   = account.billing_due_day   ?? 20
+    closeDate = format(getCloseDate(closeDay_, refMonth), 'yyyy-MM-dd')
+    dueDate   = format(getDueDate(dueDay_, refMonth, closeDay_), 'yyyy-MM-dd')
+  } else {
+    const dueDay_ = account.overdraft_due_day ?? 0
+    closeDate = format(getOverdraftDueDate(dueDay_, refMonth), 'yyyy-MM-dd')
+    dueDate   = closeDate
+  }
+
+  // Se já existe → atualiza total e/ou due_date se EM_ABERTO e divergiu
   if (existing) {
-    if (existing.status === 'EM_ABERTO' && Math.abs(existing.total_amount - total) > 0.001) {
-      await supabase.from('invoices').update({ total_amount: total } as any).eq('id', existing.id)
-      const updated = { ...existing, total_amount: total }
+    const totalDiff   = Math.abs(existing.total_amount - total) > 0.001
+    const dueDateDiff = existing.due_date !== dueDate
+    if (existing.status === 'EM_ABERTO' && (totalDiff || dueDateDiff)) {
+      await supabase.from('invoices').update({ total_amount: total, due_date: dueDate } as any).eq('id', existing.id)
+      const updated = { ...existing, total_amount: total, due_date: dueDate }
       set(s => ({
         invoices: s.invoices.map(i => i.id === existing.id ? updated : i)
       }))
       return updated as Invoice
     }
     return existing
-  }
-
-  // Calcula datas
-  let closeDate: string
-  let dueDate: string
-
-  if (isCreditCard(account.type)) {
-    const closeDay = account.billing_close_day ?? 10
-    const dueDay   = account.billing_due_day   ?? 20
-    closeDate = format(getCloseDate(closeDay, refMonth), 'yyyy-MM-dd')
-    dueDate   = format(getDueDate(dueDay, refMonth),     'yyyy-MM-dd')
-  } else {
-    const dueDay = account.overdraft_due_day ?? 0
-    closeDate = format(getOverdraftDueDate(dueDay, refMonth), 'yyyy-MM-dd')
-    dueDate   = closeDate
   }
 
   const payload = {
