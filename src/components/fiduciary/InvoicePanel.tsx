@@ -1,516 +1,556 @@
 'use client'
-// src/components/fiduciary/InvoicePanel.tsx — NOOON Caixa V4 #003
 
 import { useState, useEffect } from 'react'
-import { format, parseISO } from 'date-fns'
+import { useAppStore } from '@/store/useAppStore'
+import { Account, Invoice } from '@/types/database'
+import { fmtCurrency, fmtValue } from '@/lib/utils'
+import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { useAppStore, isCreditCard, isCreditCardNormal, isPrepaidCard, isOverdraft } from '@/store/useAppStore'
-import { fmtCurrency } from '@/lib/utils'
-import type { Invoice, InvoiceStatus } from '@/types/database'
 
-interface Props {
-  accountId: string
+interface InvoiceModalProps {
+  account: Account
   onClose: () => void
 }
 
-const STATUS_CONFIG: Record<InvoiceStatus, { label: string; color: string; bg: string }> = {
-  EM_ABERTO:  { label: 'Em Aberto',  color: '#ff6b6b', bg: 'rgba(255,107,107,0.12)' },
-  PARCIAL:    { label: 'Parcial',    color: '#ffb340', bg: 'rgba(255,179,64,0.12)'  },
-  PARCELADO:  { label: 'Parcelado',  color: '#5bc8ff', bg: 'rgba(91,200,255,0.12)'  },
-  PAGO:       { label: 'Pago',       color: '#6dd400', bg: 'rgba(109,212,0,0.12)'   },
-}
+type Tab = 'fatura' | 'config' | 'historico'
 
-function StatusBadge({ status }: { status: InvoiceStatus }) {
-  const cfg = STATUS_CONFIG[status]
-  return (
-    <span
-      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider"
-      style={{ color: cfg.color, background: cfg.bg }}
-    >
-      {status === 'EM_ABERTO' && '⚠ '}{cfg.label}
-    </span>
-  )
-}
-
-export default function InvoicePanel({ accountId, onClose }: Props) {
+export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
   const {
-    accounts, invoices, transactions, loadInvoices, loadTransactions,
-    ensureInvoice, payInvoiceFull, payInvoicePartial,
-    installInvoice, setInvoiceInterest, getInvoiceAuditLog,
-    updateAccountFiduciary, loadAccounts,
+    accounts,
+    invoices,
+    transactions,
+    loadTransactions,
+    ensureInvoice,
+    payInvoice,
+    payInvoicePartial,
+    installInvoice,
+    updateAccountFiduciary,
   } = useAppStore()
 
-  const account = accounts.find(a => a.id === accountId)
-  const isCC    = account ? isCreditCard(account.type) : false
-  const isCE    = account ? isOverdraft(account.type)  : false
+  const [tab, setTab] = useState<Tab>('fatura')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const today    = new Date()
-  const refMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-  const invoice  = invoices.find(i => i.account_id === accountId && i.reference_month === refMonth)
+  // --- Config fields ---
+  const [closeDay, setCloseDay] = useState(account.billing_close_day ?? 1)
+  const [dueDay, setDueDay] = useState(account.billing_due_day ?? 10)
+  const [creditLimit, setCreditLimit] = useState(account.credit_limit ?? 0)
+  const [configSaving, setConfigSaving] = useState(false)
 
-  const [tab, setTab]                       = useState<'fatura' | 'config' | 'historico'>('fatura')
-  const [invoiceLoading, setInvoiceLoading] = useState(false)
-  const [action, setAction]                 = useState<'pago' | 'parcial' | 'parcelado' | null>(null)
-  const [payValue, setPayValue]             = useState('')
-  const [interestVal, setInterestVal]       = useState('')
-  const [installN, setInstallN]             = useState(6)
-  const [payDate, setPayDate]               = useState(format(today, 'yyyy-MM-dd'))
-  const [loading, setLoading]               = useState(false)
-  const [auditLog, setAuditLog]             = useState<any[]>([])
+  // --- Payment modal ---
+  const [showPayModal, setShowPayModal] = useState(false)
+  const [payType, setPayType] = useState<'total' | 'parcial' | 'parcelar'>('total')
+  const [payAmount, setPayAmount] = useState('')
+  const [payInstallments, setPayInstallments] = useState('2')
+  const [paySourceAccountId, setPaySourceAccountId] = useState('')  // ← NOVO: conta debitada
+  const [payInterest, setPayInterest] = useState('')
 
-  const [closeDay, setCloseDay]               = useState(String(account?.billing_close_day ?? 10))
-  const [dueDay, setDueDay]                   = useState(String(account?.billing_due_day   ?? 20))
-  const [overdraftDay, setOverdraftDay]       = useState(String(account?.overdraft_due_day ?? 0))
-  const [creditLimit, setCreditLimit]         = useState(String(account?.credit_limit      ?? ''))
-  const [overdraftLimit, setOverdraftLimit]   = useState(String(account?.overdraft_limit   ?? ''))
-  const [savingConfig, setSavingConfig]       = useState(false)
+  // Contas correntes disponíveis para debitar (checking, savings, overdraft — excluindo fiduciárias)
+  const debitableAccounts = accounts.filter(
+    (a) =>
+      a.is_active &&
+      a.id !== account.id &&
+      ['checking', 'savings', 'overdraft', 'wallet'].includes(a.type)
+  )
+
+  // Fatura atual
+  const invoice: Invoice | undefined = invoices.find((i) => i.account_id === account.id)
 
   useEffect(() => {
-    async function init() {
-      await loadInvoices()
+    const init = async () => {
+      setLoading(true)
       await loadTransactions()
-      setInvoiceLoading(true)
-      await ensureInvoice(accountId, refMonth)
-      setInvoiceLoading(false)
+      await ensureInvoice(account.id)
+      setLoading(false)
     }
     init()
-  }, [accountId, refMonth])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account.id])
 
-  useEffect(() => {
-    if (tab === 'historico' && invoice) {
-      getInvoiceAuditLog(invoice.id).then(setAuditLog)
+  // Transações do ciclo atual
+  const cycleTransactions = transactions.filter(
+    (t) =>
+      t.account_id === account.id &&
+      invoice &&
+      t.reference_date >= invoice.cycle_start &&
+      t.reference_date <= invoice.cycle_end
+  )
+
+  const totalFatura = invoice?.total_amount ?? 0
+  const pago = invoice?.paid_amount ?? 0
+  const restante = totalFatura - pago
+
+  const currentBalance = account.current_balance ?? 0
+  const creditLimit_ = account.credit_limit ?? 0
+  const usedPercent = creditLimit_ > 0 ? ((creditLimit_ - currentBalance) / creditLimit_) * 100 : 0
+
+  // --- Handlers ---
+  const handleOpenPay = () => {
+    setPayAmount(String(restante.toFixed(2)))
+    setPaySourceAccountId(debitableAccounts[0]?.id ?? '')
+    setPayInterest('')
+    setPayType('total')
+    setPayInstallments('2')
+    setShowPayModal(true)
+    setError('')
+  }
+
+  const handlePay = async () => {
+    if (!invoice) return
+    if (!paySourceAccountId) {
+      setError('Selecione a conta corrente que irá debitar.')
+      return
     }
-  }, [tab, invoice])
 
-  async function handlePayFull() {
-    if (!invoice || !payDate) return
-    if (isCE && !interestVal) return
     setLoading(true)
-    if (isCE && interestVal) await setInvoiceInterest(invoice.id, parseFloat(interestVal))
-    await payInvoiceFull(invoice.id, payDate)
-    setLoading(false)
-    setAction(null)
-  }
+    setError('')
 
-  async function handlePayPartial() {
-    if (!invoice || !payValue || !payDate) return
-    setLoading(true)
-    await payInvoicePartial(invoice.id, parseFloat(payValue), payDate)
-    setLoading(false)
-    setAction(null)
-  }
+    try {
+      if (payType === 'total') {
+        // Debita na conta corrente escolhida + quita fatura do CC
+        await payInvoice(invoice.id, account.id, paySourceAccountId)
+      } else if (payType === 'parcial') {
+        const valor = parseFloat(payAmount.replace(',', '.'))
+        if (!valor || valor <= 0 || valor > restante) {
+          setError('Valor inválido para pagamento parcial.')
+          setLoading(false)
+          return
+        }
+        const juros = parseFloat((payInterest || '0').replace(',', '.'))
+        await payInvoicePartial(invoice.id, account.id, paySourceAccountId, valor, juros)
+      } else {
+        const n = parseInt(payInstallments)
+        if (!n || n < 2) {
+          setError('Número de parcelas inválido.')
+          setLoading(false)
+          return
+        }
+        await installInvoice(invoice.id, account.id, paySourceAccountId, n)
+      }
 
-  async function handleInstall() {
-    if (!invoice || !payValue) return
-    setLoading(true)
-    await installInvoice(invoice.id, parseFloat(payValue), installN, payDate)
-    setLoading(false)
-    setAction(null)
-  }
-
-  async function handleSaveConfig() {
-    setSavingConfig(true)
-    if (isCC) {
-      await updateAccountFiduciary(accountId, {
-        billing_close_day: parseInt(closeDay),
-        billing_due_day:   parseInt(dueDay),
-        credit_limit:      creditLimit ? parseFloat(creditLimit) : null,
-      })
-    } else {
-      await updateAccountFiduciary(accountId, {
-        overdraft_due_day: parseInt(overdraftDay),
-        overdraft_limit:   overdraftLimit ? parseFloat(overdraftLimit) : null,
-      })
+      await loadTransactions()
+      await ensureInvoice(account.id)
+      setShowPayModal(false)
+    } catch (e: any) {
+      setError(e.message ?? 'Erro ao processar pagamento.')
     }
-    await loadAccounts()
-    setSavingConfig(false)
+
+    setLoading(false)
   }
 
-  const totalFatura  = invoice?.total_amount ?? 0
-  const pago         = invoice?.paid_amount  ?? 0
-  const remaining    = totalFatura - pago
-  const isPending    = invoice && invoice.status !== 'PAGO'
-  const creditLimit_ = account?.credit_limit ?? 0
-  const limitUsedPct = isCC && creditLimit_ > 0
-    ? Math.min((totalFatura / creditLimit_) * 100, 100)
-    : null
+  const handleSaveConfig = async () => {
+    setConfigSaving(true)
+    await updateAccountFiduciary(account.id, {
+      billing_close_day: closeDay,
+      billing_due_day: dueDay,
+      credit_limit: creditLimit,
+    })
+    await loadTransactions()
+    await ensureInvoice(account.id)
+    setConfigSaving(false)
+  }
 
-  const inputCls   = 'w-full rounded-lg px-3 py-2.5 text-sm outline-none transition-colors'
-  const inputStyle = { background: '#223026', border: '1px solid rgba(109,212,0,0.2)', color: '#e8f5e2' }
-  const labelCls   = 'block text-[10px] font-bold uppercase tracking-widest mb-1.5'
+  const statusColor: Record<string, string> = {
+    EM_ABERTO: 'text-amber-400',
+    PARCIAL: 'text-blue-400',
+    PARCELADO: 'text-purple-400',
+    PAGO: 'text-green-400',
+  }
 
-  if (!account) return null
-
-  const accountTypeLabel = isCreditCardNormal(account.type) ? 'Cartão de Crédito'
-    : isPrepaidCard(account.type) ? 'Cartão Pré-pago'
-    : 'Cheque Especial'
+  const statusLabel: Record<string, string> = {
+    EM_ABERTO: 'EM ABERTO',
+    PARCIAL: 'PARCIAL',
+    PARCELADO: 'PARCELADO',
+    PAGO: 'PAGO',
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75">
-      <div
-        className="w-full max-w-2xl rounded-t-2xl p-5 max-h-[92vh] overflow-y-auto border-t border-x"
-        style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.2)' }}
-      >
-        <div className="w-8 h-1 rounded mx-auto mb-4" style={{ background: '#2a3a2e' }} />
+    <>
+      {/* Overlay */}
+      <div className="fixed inset-0 bg-black/70 z-40" onClick={onClose} />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span style={{ fontSize: 20 }}>💳</span>
-              <h2 className="font-['Barlow_Condensed'] text-xl font-black tracking-wide" style={{ color: '#e8f5e2' }}>
-                {account.name}
-              </h2>
-            </div>
-            <div className="text-[11px] mt-0.5" style={{ color: '#7ab070' }}>
-              {accountTypeLabel} · {refMonth}
-            </div>
-          </div>
-          {invoice && <StatusBadge status={invoice.status} />}
+      {/* Bottom Sheet */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#1c2a1f] rounded-t-2xl max-h-[92vh] overflow-y-auto border-t border-[rgba(109,212,0,0.2)]">
+        {/* Handle */}
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-[#3a5a3e]" />
         </div>
 
-        {/* Alerta pendente */}
-        {isPending && invoice && (
-          <div className="mb-4 px-3 py-2.5 rounded-lg border flex items-center gap-2"
-            style={{ background: 'rgba(255,107,107,0.07)', borderColor: 'rgba(255,107,107,0.3)' }}>
-            <span style={{ fontSize: 18 }}>🔴</span>
-            <div className="text-[12px] font-semibold" style={{ color: '#ff6b6b' }}>
-              Fatura em aberto — vence em{' '}
-              <strong>{format(parseISO(invoice.due_date), "dd/MM/yyyy", { locale: ptBR })}</strong>
-            </div>
+        {/* Header */}
+        <div className="px-5 pb-3 flex items-center justify-between">
+          <div>
+            <p className="font-['Barlow_Condensed'] font-black uppercase tracking-wider text-[#e8f5e2] text-lg">
+              {account.name}
+            </p>
+            <p className="text-xs text-[#6a9060]">
+              {account.type === 'prepaid_card' ? 'CC PRÉ-PAGO' : 'CC NORMAL'} · FATURA
+            </p>
           </div>
-        )}
+          <button onClick={onClose} className="text-[#6a9060] text-xl font-bold px-2">✕</button>
+        </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: '#223026' }}>
-          {(['fatura', 'config', 'historico'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className="flex-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all"
-              style={{
-                background: tab === t ? '#1c2a1f' : 'transparent',
-                color:      tab === t ? '#6dd400' : '#7ab070',
-                border:     tab === t ? '1px solid rgba(109,212,0,0.25)' : '1px solid transparent',
-              }}
+        <div className="flex border-b border-[rgba(109,212,0,0.15)] px-5 gap-6">
+          {(['fatura', 'config', 'historico'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`font-['Barlow_Condensed'] font-black uppercase tracking-wider text-sm pb-2 border-b-2 transition-colors ${
+                tab === t
+                  ? 'border-[#6dd400] text-[#6dd400]'
+                  : 'border-transparent text-[#6a9060]'
+              }`}
             >
-              {t === 'fatura' ? '📋 Fatura' : t === 'config' ? '⚙️ Config' : '📜 Histórico'}
+              {t === 'historico' ? 'Histórico' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
 
-        {/* ── ABA: FATURA ─────────────────────────────────────────────────── */}
-        {tab === 'fatura' && (
-          invoiceLoading ? (
-            <div className="text-center py-10 text-sm" style={{ color: '#7ab070' }}>
-              Carregando fatura...
+        <div className="px-5 pt-4 pb-8">
+          {/* ===================== TAB FATURA ===================== */}
+          {tab === 'fatura' && (
+            <div className="space-y-4">
+              {loading && (
+                <p className="text-center text-[#6a9060] text-sm py-4">Carregando fatura...</p>
+              )}
+
+              {!loading && invoice && (
+                <>
+                  {/* Status */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#a8c8a0] text-xs">Status</span>
+                    <span className={`font-['Barlow_Condensed'] font-black text-sm ${statusColor[invoice.status] ?? 'text-[#e8f5e2]'}`}>
+                      {statusLabel[invoice.status] ?? invoice.status}
+                    </span>
+                  </div>
+
+                  {/* Cards totais */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Total', value: totalFatura, color: 'text-[#ff6b6b]' },
+                      { label: 'Pago', value: pago, color: 'text-[#6dd400]' },
+                      { label: 'Restante', value: restante, color: 'text-amber-400' },
+                    ].map(({ label, value, color }) => (
+                      <div key={label} className="bg-[#223026] rounded-xl p-3 text-center">
+                        <p className="text-[#6a9060] text-xs mb-1">{label}</p>
+                        <p className={`font-['JetBrains_Mono'] font-semibold text-sm ${color}`}>
+                          {fmtValue(value)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Barra de limite */}
+                  <div className="bg-[#223026] rounded-xl p-3 space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#a8c8a0]">Limite disponível</span>
+                      <span className={`font-['JetBrains_Mono'] font-semibold ${currentBalance < 0 ? 'text-[#ff6b6b]' : 'text-[#6dd400]'}`}>
+                        {fmtCurrency(currentBalance)}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-[#2a3a2e] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          usedPercent > 80 ? 'bg-[#ff6b6b]' : usedPercent > 50 ? 'bg-amber-400' : 'bg-[#6dd400]'
+                        }`}
+                        style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-[#6a9060]">
+                      <span>Limite total: {fmtCurrency(creditLimit_)}</span>
+                      <span>{usedPercent.toFixed(0)}% utilizado</span>
+                    </div>
+                  </div>
+
+                  {/* Datas */}
+                  <div className="bg-[#223026] rounded-xl p-3 space-y-2">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#a8c8a0]">Fechamento</span>
+                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
+                        {format(new Date(invoice.cycle_end + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#a8c8a0]">Vencimento</span>
+                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
+                        {format(new Date(invoice.due_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-[#a8c8a0]">Referência</span>
+                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">{invoice.ref_month}</span>
+                    </div>
+                  </div>
+
+                  {/* Transações do ciclo */}
+                  {cycleTransactions.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[#6a9060] text-xs font-['Barlow_Condensed'] uppercase tracking-wider">
+                        Lançamentos do ciclo
+                      </p>
+                      {cycleTransactions.map((t) => (
+                        <div key={t.id} className="flex justify-between items-center py-1.5 border-b border-[rgba(109,212,0,0.08)]">
+                          <span className="text-[#a8c8a0] text-xs truncate max-w-[60%]">{t.description}</span>
+                          <span className={`font-['JetBrains_Mono'] text-xs ${t.type === 'income' ? 'text-[#6dd400]' : 'text-[#ff6b6b]'}`}>
+                            {t.type === 'income' ? '+' : '-'}{fmtValue(t.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Botão Pagar */}
+                  {invoice.status !== 'PAGO' && (
+                    <button
+                      onClick={handleOpenPay}
+                      className="w-full bg-[#1a5c2a] border border-[rgba(109,212,0,0.3)] rounded-xl py-3 font-['Barlow_Condensed'] font-black uppercase tracking-wider text-[#6dd400] text-sm mt-2"
+                    >
+                      Pagar Fatura
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-          ) : !invoice ? (
-            <div className="text-center py-10 text-sm" style={{ color: '#7ab070' }}>
-              Nenhuma fatura encontrada para este período.
-            </div>
-          ) : (
-            <div>
-              {/* Cards de totais */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
+          )}
+
+          {/* ===================== TAB CONFIG ===================== */}
+          {tab === 'config' && (
+            <div className="space-y-4">
+              <div className="space-y-3">
                 {[
-                  { label: 'Total fatura', value: totalFatura, color: '#ff6b6b' },
-                  { label: 'Pago',         value: pago,        color: '#6dd400' },
-                  { label: 'Restante',     value: remaining,   color: remaining > 0 ? '#ffb340' : '#6dd400' },
-                ].map(c => (
-                  <div key={c.label} className="rounded-xl p-3 border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.12)' }}>
-                    <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: '#7ab070' }}>{c.label}</div>
-                    <div className="font-['JetBrains_Mono'] font-bold text-base" style={{ color: c.color }}>
-                      {fmtCurrency(c.value)}
-                    </div>
+                  { label: 'Dia de fechamento', value: closeDay, setter: setCloseDay, min: 1, max: 31 },
+                  { label: 'Dia de vencimento', value: dueDay, setter: setDueDay, min: 1, max: 31 },
+                ].map(({ label, value, setter, min, max }) => (
+                  <div key={label}>
+                    <label className="block text-xs text-[#a8c8a0] mb-1">{label}</label>
+                    <input
+                      type="number"
+                      min={min}
+                      max={max}
+                      value={value}
+                      onChange={(e) => setter(Number(e.target.value))}
+                      className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                    />
                   </div>
                 ))}
+
+                {account.type === 'credit_card' && (
+                  <div>
+                    <label className="block text-xs text-[#a8c8a0] mb-1">Limite de crédito (R$)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={creditLimit}
+                      onChange={(e) => setCreditLimit(Number(e.target.value))}
+                      className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Barra de limite (CC) */}
-              {isCC && creditLimit_ > 0 && limitUsedPct !== null && (
-                <div className="mb-4 rounded-xl p-3 border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.12)' }}>
-                  <div className="flex justify-between text-[10px] mb-2" style={{ color: '#7ab070' }}>
-                    <span>Limite utilizado</span>
-                    <span style={{ color: limitUsedPct > 80 ? '#ff6b6b' : '#a8c8a0' }}>
-                      {fmtCurrency(totalFatura)} / {fmtCurrency(creditLimit_)} ({limitUsedPct.toFixed(0)}%)
-                    </span>
-                  </div>
-                  <div className="w-full h-2 rounded-full overflow-hidden mb-2" style={{ background: '#2a3a2e' }}>
-                    <div className="h-2 rounded-full transition-all" style={{
-                      width: `${limitUsedPct}%`,
-                      background: limitUsedPct > 80 ? '#ff6b6b' : limitUsedPct > 50 ? '#ffb340' : '#6dd400',
-                    }} />
-                  </div>
-                  <div className="flex justify-between text-[10px]">
-                    <span style={{ color: '#7ab070' }}>Limite disponível</span>
-                    <span className="font-['JetBrains_Mono'] font-semibold"
-                      style={{ color: (account.current_balance ?? 0) <= 0 ? '#ff6b6b' : '#6dd400' }}>
-                      {fmtCurrency(Math.max(account.current_balance ?? 0, 0))}
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Datas */}
-              <div className="grid grid-cols-2 gap-2 mb-5">
-                <div className="rounded-lg px-3 py-2 border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.1)' }}>
-                  <div className="text-[10px] uppercase tracking-wider mb-0.5" style={{ color: '#7ab070' }}>
-                    {isCC ? 'Fechamento' : 'Vencimento CE'}
-                  </div>
-                  <div className="text-sm font-semibold" style={{ color: '#e8f5e2' }}>
-                    {format(parseISO(invoice.close_date), "dd/MM/yyyy")}
-                  </div>
-                </div>
-                <div className="rounded-lg px-3 py-2 border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.1)' }}>
-                  <div className="text-[10px] uppercase tracking-wider mb-0.5" style={{ color: '#7ab070' }}>Vencimento</div>
-                  <div className="text-sm font-semibold" style={{ color: '#e8f5e2' }}>
-                    {format(parseISO(invoice.due_date), "dd/MM/yyyy")}
-                  </div>
-                </div>
-              </div>
-
-              {invoice.generates_interest && (
-                <div className="mb-4 px-3 py-2.5 rounded-lg border text-xs"
-                  style={{ background: 'rgba(217,70,239,0.07)', borderColor: 'rgba(217,70,239,0.25)', color: '#d946ef' }}>
-                  ⚠️ Esta fatura gerará <strong>Juros e Multas</strong> na próxima.
-                </div>
-              )}
-
-              {/* Botões de ação */}
-              {invoice.status !== 'PAGO' && !action && (
-                <div className="grid grid-cols-1 gap-2">
-                  <button onClick={() => setAction('pago')}
-                    className="w-full py-3 rounded-xl font-['Barlow_Condensed'] font-black text-sm uppercase tracking-wider border"
-                    style={{ background: 'rgba(109,212,0,0.1)', borderColor: '#6dd400', color: '#6dd400' }}>
-                    ✓ Pagamento Total
-                  </button>
-                  {isCC && (
-                    <>
-                      <button onClick={() => setAction('parcial')}
-                        className="w-full py-3 rounded-xl font-['Barlow_Condensed'] font-black text-sm uppercase tracking-wider border"
-                        style={{ background: 'rgba(255,179,64,0.08)', borderColor: '#ffb340', color: '#ffb340' }}>
-                        ◑ Pagamento Parcial
-                      </button>
-                      <button onClick={() => setAction('parcelado')}
-                        className="w-full py-3 rounded-xl font-['Barlow_Condensed'] font-black text-sm uppercase tracking-wider border"
-                        style={{ background: 'rgba(91,200,255,0.08)', borderColor: '#5bc8ff', color: '#5bc8ff' }}>
-                        ≡ Parcelar Fatura
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {invoice.status === 'PAGO' && (
-                <div className="text-center py-4 text-sm rounded-xl border"
-                  style={{ background: 'rgba(109,212,0,0.05)', borderColor: 'rgba(109,212,0,0.2)', color: '#6dd400' }}>
-                  ✓ Fatura quitada
-                </div>
-              )}
-
-              {/* Form: PAGO TOTAL */}
-              {action === 'pago' && (
-                <div className="rounded-xl border p-4 mt-2" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.2)' }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: '#6dd400' }}>✓ Confirmar pagamento total</div>
-                  <div className="mb-3 px-3 py-2 rounded-lg text-xs border" style={{ background: '#1c2a1f', borderColor: 'rgba(109,212,0,0.1)', color: '#a8c8a0' }}>
-                    Será criado um registro <strong style={{ color: '#6dd400' }}>Pagamento de CC</strong> no valor de{' '}
-                    <strong style={{ color: '#6dd400' }}>{fmtCurrency(remaining)}</strong> com status Realizado,
-                    devolvendo o limite ao disponível.
-                  </div>
-                  {isCE && (
-                    <div className="mb-3">
-                      <label className={labelCls} style={{ color: '#d946ef' }}>⚠️ Juros e Multas cobrados (obrigatório)</label>
-                      <input type="number" value={interestVal} onChange={e => setInterestVal(e.target.value)}
-                        placeholder="Ex: 47,80" className={inputCls}
-                        style={{ ...inputStyle, borderColor: interestVal ? 'rgba(109,212,0,0.3)' : 'rgba(217,70,239,0.4)' }} />
-                    </div>
-                  )}
-                  <div className="mb-3">
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Data do pagamento</label>
-                    <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handlePayFull} disabled={loading || (isCE && !interestVal)}
-                      className="flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wider disabled:opacity-40"
-                      style={{ background: '#6dd400', color: '#0f1f12' }}>
-                      {loading ? 'Salvando...' : 'Confirmar'}
-                    </button>
-                    <button onClick={() => setAction(null)} className="px-4 py-2.5 rounded-lg text-sm border"
-                      style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Form: PARCIAL */}
-              {action === 'parcial' && (
-                <div className="rounded-xl border p-4 mt-2" style={{ background: '#223026', borderColor: 'rgba(255,179,64,0.2)' }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: '#ffb340' }}>◑ Pagamento parcial</div>
-                  <div className="mb-3 px-3 py-2 rounded-lg text-xs border" style={{ background: '#1c2a1f', borderColor: 'rgba(255,179,64,0.15)', color: '#a8c8a0' }}>
-                    Será criado um registro <strong style={{ color: '#ffb340' }}>Pagamento de CC</strong> com o valor informado.
-                    O saldo restante permanece comprometido para ajuste posterior.
-                  </div>
-                  <div className="mb-3">
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Valor pago (R$)</label>
-                    <input type="number" value={payValue} onChange={e => setPayValue(e.target.value)}
-                      placeholder="0,00" className={inputCls} style={inputStyle} />
-                  </div>
-                  <div className="mb-3">
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Data do pagamento</label>
-                    <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                  {payValue && parseFloat(payValue) > 0 && (
-                    <div className="text-xs mb-3 px-3 py-2 rounded-lg border" style={{ background: '#1c2a1f', borderColor: 'rgba(255,179,64,0.15)', color: '#a8c8a0' }}>
-                      Restante: <strong style={{ color: '#ff6b6b' }}>{fmtCurrency(remaining - parseFloat(payValue))}</strong>
-                      {' '}· Um marcador de juros R$1,00 será criado na próxima fatura.
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={handlePayPartial} disabled={loading || !payValue}
-                      className="flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wider disabled:opacity-40"
-                      style={{ background: '#ffb340', color: '#1a1a1a' }}>
-                      {loading ? 'Salvando...' : 'Confirmar'}
-                    </button>
-                    <button onClick={() => setAction(null)} className="px-4 py-2.5 rounded-lg text-sm border"
-                      style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Form: PARCELADO */}
-              {action === 'parcelado' && (
-                <div className="rounded-xl border p-4 mt-2" style={{ background: '#223026', borderColor: 'rgba(91,200,255,0.2)' }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: '#5bc8ff' }}>≡ Parcelar fatura</div>
-                  <div className="mb-3 px-3 py-2 rounded-lg text-xs border" style={{ background: '#1c2a1f', borderColor: 'rgba(91,200,255,0.15)', color: '#a8c8a0' }}>
-                    Será criado um registro <strong style={{ color: '#5bc8ff' }}>Pagamento de CC</strong> parcelado.
-                    O saldo comprometido será distribuído nas parcelas.
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div>
-                      <label className={labelCls} style={{ color: '#7ab070' }}>Valor total (R$)</label>
-                      <input type="number" value={payValue} onChange={e => setPayValue(e.target.value)}
-                        placeholder="0,00" className={inputCls} style={inputStyle} />
-                    </div>
-                    <div>
-                      <label className={labelCls} style={{ color: '#7ab070' }}>Nº de parcelas</label>
-                      <select value={installN} onChange={e => setInstallN(parseInt(e.target.value))} className={inputCls} style={inputStyle}>
-                        {[2, 3, 4, 6, 8, 10, 12, 18, 24, 36, 48].map(n => (
-                          <option key={n} value={n} style={{ background: '#223026' }}>{n}×</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="mb-3">
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Data 1ª parcela</label>
-                    <input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                  {payValue && parseFloat(payValue) > 0 && (
-                    <div className="text-xs mb-3 px-3 py-2 rounded-lg border" style={{ background: '#1c2a1f', borderColor: 'rgba(91,200,255,0.15)', color: '#a8c8a0' }}>
-                      <span style={{ color: '#5bc8ff', fontWeight: 700 }}>{installN}×</span> de{' '}
-                      <span style={{ color: '#5bc8ff', fontWeight: 700 }}>{fmtCurrency(parseFloat(payValue) / installN)}</span>
-                      {' '}· Classificado como Saldo Financiado
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <button onClick={handleInstall} disabled={loading || !payValue}
-                      className="flex-1 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wider disabled:opacity-40"
-                      style={{ background: '#5bc8ff', color: '#0a1a2a' }}>
-                      {loading ? 'Salvando...' : 'Confirmar'}
-                    </button>
-                    <button onClick={() => setAction(null)} className="px-4 py-2.5 rounded-lg text-sm border"
-                      style={{ borderColor: 'rgba(255,255,255,0.1)', color: '#7ab070' }}>
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                onClick={handleSaveConfig}
+                disabled={configSaving}
+                className="w-full bg-[#1a5c2a] border border-[rgba(109,212,0,0.3)] rounded-xl py-3 font-['Barlow_Condensed'] font-black uppercase tracking-wider text-[#6dd400] text-sm disabled:opacity-50"
+              >
+                {configSaving ? 'Salvando...' : 'Salvar Configurações'}
+              </button>
             </div>
-          )
-        )}
+          )}
 
-        {/* ── ABA: CONFIG ─────────────────────────────────────────────────── */}
-        {tab === 'config' && (
-          <div>
-            {isCC && (
-              <>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Dia de fechamento (1–28)</label>
-                    <input type="number" min={1} max={28} value={closeDay} onChange={e => setCloseDay(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                  <div>
-                    <label className={labelCls} style={{ color: '#7ab070' }}>Dia de vencimento (1–28)</label>
-                    <input type="number" min={1} max={28} value={dueDay} onChange={e => setDueDay(e.target.value)} className={inputCls} style={inputStyle} />
-                  </div>
-                </div>
-                <div className="mb-4">
-                  <label className={labelCls} style={{ color: '#7ab070' }}>Limite do cartão (R$)</label>
-                  <input type="number" value={creditLimit} onChange={e => setCreditLimit(e.target.value)} placeholder="Ex: 5000" className={inputCls} style={inputStyle} />
-                </div>
-                <div className="text-xs mb-4 px-3 py-2 rounded-lg border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.1)', color: '#7ab070' }}>
-                  ℹ️ Se o dia cair em fim de semana ou feriado, o sistema ajusta automaticamente para o próximo dia útil.
-                </div>
-              </>
-            )}
-            {isCE && (
-              <>
-                <div className="mb-3">
-                  <label className={labelCls} style={{ color: '#7ab070' }}>Dia de vencimento (0 = último dia do mês)</label>
-                  <input type="number" min={0} max={28} value={overdraftDay} onChange={e => setOverdraftDay(e.target.value)} className={inputCls} style={inputStyle} />
-                </div>
-                <div className="mb-4">
-                  <label className={labelCls} style={{ color: '#7ab070' }}>Limite do cheque especial (R$)</label>
-                  <input type="number" value={overdraftLimit} onChange={e => setOverdraftLimit(e.target.value)} placeholder="Ex: 2000" className={inputCls} style={inputStyle} />
-                </div>
-              </>
-            )}
-            <button onClick={handleSaveConfig} disabled={savingConfig}
-              className="w-full py-3 rounded-xl font-['Barlow_Condensed'] font-black text-sm uppercase tracking-wider disabled:opacity-40"
-              style={{ background: '#6dd400', color: '#0f1f12' }}>
-              {savingConfig ? 'Salvando...' : 'Salvar configurações'}
-            </button>
-          </div>
-        )}
+          {/* ===================== TAB HISTÓRICO ===================== */}
+          {tab === 'historico' && (
+            <AuditLog accountId={account.id} />
+          )}
+        </div>
+      </div>
 
-        {/* ── ABA: HISTÓRICO ──────────────────────────────────────────────── */}
-        {tab === 'historico' && (
-          <div>
-            {auditLog.length === 0 ? (
-              <div className="text-center py-10 text-sm" style={{ color: '#7ab070' }}>
-                Nenhum registro de auditoria ainda.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {auditLog.map(log => (
-                  <div key={log.id} className="rounded-xl px-3 py-2.5 border" style={{ background: '#223026', borderColor: 'rgba(109,212,0,0.1)' }}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: '#6dd400' }}>
-                        {log.action.replace(/_/g, ' ')}
-                      </span>
-                      <span className="text-[10px]" style={{ color: '#6a9060' }}>
-                        {format(new Date(log.created_at), "dd/MM/yyyy HH:mm")}
-                      </span>
-                    </div>
-                    {log.new_value && (
-                      <pre className="text-[10px] font-['JetBrains_Mono']" style={{ color: '#a8c8a0' }}>
-                        {JSON.stringify(log.new_value, null, 2)}
-                      </pre>
-                    )}
-                  </div>
+      {/* ===================== MODAL DE PAGAMENTO ===================== */}
+      {showPayModal && (
+        <>
+          <div className="fixed inset-0 bg-black/80 z-60" onClick={() => setShowPayModal(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-70 bg-[#1c2a1f] rounded-t-2xl border-t border-[rgba(109,212,0,0.2)] px-5 pt-4 pb-8 space-y-4">
+            <div className="flex justify-center mb-1">
+              <div className="w-10 h-1 rounded-full bg-[#3a5a3e]" />
+            </div>
+
+            <p className="font-['Barlow_Condensed'] font-black uppercase tracking-wider text-[#e8f5e2] text-base">
+              Pagar Fatura · {account.name}
+            </p>
+
+            {/* ── SELEÇÃO DE CONTA DEBITADA ── */}
+            <div>
+              <label className="block text-xs text-[#a8c8a0] mb-1">
+                Débito de qual conta? <span className="text-[#ff6b6b]">*</span>
+              </label>
+              {debitableAccounts.length === 0 ? (
+                <p className="text-xs text-[#ff6b6b]">
+                  Nenhuma conta corrente disponível. Cadastre uma conta do tipo Corrente, Poupança ou similar.
+                </p>
+              ) : (
+                <select
+                  value={paySourceAccountId}
+                  onChange={(e) => setPaySourceAccountId(e.target.value)}
+                  className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] text-sm outline-none focus:border-[#6dd400]"
+                >
+                  <option value="">Selecione a conta...</option>
+                  {debitableAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} · {fmtCurrency(a.current_balance ?? 0)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p className="text-xs text-[#6a9060] mt-1">
+                O valor será debitado desta conta e o limite do CC será restaurado.
+              </p>
+            </div>
+
+            {/* Tipo de pagamento */}
+            <div>
+              <label className="block text-xs text-[#a8c8a0] mb-1">Tipo de pagamento</label>
+              <div className="flex gap-2">
+                {[
+                  { id: 'total', label: 'Total' },
+                  { id: 'parcial', label: 'Parcial' },
+                  { id: 'parcelar', label: 'Parcelar' },
+                ].map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => setPayType(id as any)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-['Barlow_Condensed'] font-black uppercase tracking-wider border transition-colors ${
+                      payType === id
+                        ? 'bg-[#1a5c2a] border-[#6dd400] text-[#6dd400]'
+                        : 'bg-[#223026] border-[rgba(109,212,0,0.2)] text-[#6a9060]'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
 
-        <button onClick={onClose}
-          className="w-full mt-5 py-2.5 rounded-xl text-sm border transition-colors"
-          style={{ borderColor: 'rgba(255,255,255,0.08)', color: '#7ab070' }}>
-          Fechar
-        </button>
-      </div>
+            {/* Campos condicionais */}
+            {payType === 'total' && (
+              <div className="bg-[#223026] rounded-xl p-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#a8c8a0]">Valor total a pagar</span>
+                  <span className="font-['JetBrains_Mono'] text-[#6dd400] font-semibold">
+                    {fmtCurrency(restante)}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {payType === 'parcial' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-[#a8c8a0] mb-1">
+                    Valor a pagar (máx. {fmtCurrency(restante)})
+                  </label>
+                  <input
+                    type="number"
+                    value={payAmount}
+                    onChange={(e) => setPayAmount(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#a8c8a0] mb-1">Juros e multas (R$)</label>
+                  <input
+                    type="number"
+                    value={payInterest}
+                    onChange={(e) => setPayInterest(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {payType === 'parcelar' && (
+              <div>
+                <label className="block text-xs text-[#a8c8a0] mb-1">Número de parcelas</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={48}
+                  value={payInstallments}
+                  onChange={(e) => setPayInstallments(e.target.value)}
+                  className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                />
+              </div>
+            )}
+
+            {error && (
+              <p className="text-[#ff6b6b] text-xs bg-[rgba(255,107,107,0.1)] rounded-xl px-3 py-2">
+                {error}
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setShowPayModal(false)}
+                className="flex-1 py-3 rounded-xl border border-[rgba(109,212,0,0.2)] text-[#6a9060] font-['Barlow_Condensed'] font-black uppercase tracking-wider text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handlePay}
+                disabled={loading || !paySourceAccountId}
+                className="flex-1 py-3 rounded-xl bg-[#1a5c2a] border border-[rgba(109,212,0,0.3)] text-[#6dd400] font-['Barlow_Condensed'] font-black uppercase tracking-wider text-sm disabled:opacity-40"
+              >
+                {loading ? 'Processando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
+// ── Sub-componente: Log de auditoria ──────────────────────────────
+function AuditLog({ accountId }: { accountId: string }) {
+  const { supabase } = useAppStore()
+  const [logs, setLogs] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetch = async () => {
+      const { data } = await supabase
+        .from('invoice_audit_log')
+        .select('*')
+        .eq('account_id', accountId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      setLogs(data ?? [])
+      setLoading(false)
+    }
+    fetch()
+  }, [accountId])
+
+  if (loading) return <p className="text-center text-[#6a9060] text-sm py-4">Carregando...</p>
+  if (logs.length === 0) return <p className="text-center text-[#6a9060] text-sm py-4">Nenhum registro de auditoria.</p>
+
+  return (
+    <div className="space-y-2">
+      {logs.map((log) => (
+        <div key={log.id} className="bg-[#223026] rounded-xl p-3">
+          <div className="flex justify-between items-start">
+            <span className="text-[#e8f5e2] text-xs font-['Barlow_Condensed'] uppercase tracking-wider">
+              {log.action}
+            </span>
+            <span className="text-[#6a9060] text-xs font-['JetBrains_Mono']">
+              {format(new Date(log.created_at), 'dd/MM HH:mm', { locale: ptBR })}
+            </span>
+          </div>
+          {log.details && (
+            <p className="text-[#a8c8a0] text-xs mt-1">{JSON.stringify(log.details)}</p>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
