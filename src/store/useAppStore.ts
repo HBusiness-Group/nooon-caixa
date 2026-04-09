@@ -456,9 +456,27 @@ ensureInvoice: async (accountId, referenceMonth) => {
     generates_interest: false,
   }
 
-  const res = await supabase.from('invoices').upsert(payload as any, { onConflict: 'account_id,reference_month', ignoreDuplicates: false }).select().single()
+  const res = await supabase.from('invoices').insert(payload as any).select().single()
   const created: any = (res as any).data
-  if (!created) return null
+
+  // Se insert falhou por duplicata (409), busca a existente no banco
+  if (!created) {
+    const { data: existing } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('reference_month', refMonth)
+      .single()
+    if (existing) {
+      set(s => ({
+        invoices: s.invoices.some(i => i.id === existing.id)
+          ? s.invoices
+          : [existing as Invoice, ...s.invoices]
+      }))
+      return existing as Invoice
+    }
+    return null
+  }
 
   set(s => ({ invoices: [created as Invoice, ...s.invoices] }))
   return created as Invoice
