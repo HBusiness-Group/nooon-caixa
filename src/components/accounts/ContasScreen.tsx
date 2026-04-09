@@ -104,7 +104,7 @@ export default function ContasScreen() {
 
   // Garante fatura para todas as contas fiduciárias ativas
   useEffect(() => {
-    const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type))
+    const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type)).sort((a, b) => (b.current_balance ?? 0) - (a.current_balance ?? 0))
     if (fiduciaryAccounts.length === 0) return
     if (transactions.length === 0) return
     fiduciaryAccounts.forEach(a => {
@@ -304,8 +304,8 @@ export default function ContasScreen() {
 
   // ── Separação de contas por tipo ─────────────────────────────────────────
 
-  const regularAccounts   = accounts.filter(a => !isFiduciary(a.type))
-  const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type))
+  const regularAccounts   = accounts.filter(a => !isFiduciary(a.type)).sort((a, b) => (b.current_balance ?? 0) - (a.current_balance ?? 0))
+  const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type)).sort((a, b) => (b.current_balance ?? 0) - (a.current_balance ?? 0))
 
   // ── Render ───────────────────────────────────────────────────────────────
 
