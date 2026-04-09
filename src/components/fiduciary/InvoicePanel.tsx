@@ -2,39 +2,42 @@
 
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
-import { Account, Invoice } from '@/types/database'
+import { Invoice } from '@/types/database'
 import { fmtCurrency, fmtValue } from '@/lib/utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 interface InvoiceModalProps {
-  account: Account
+  accountId: string
   onClose: () => void
 }
 
 type Tab = 'fatura' | 'config' | 'historico'
 
-export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
+export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) {
   const {
     accounts,
     invoices,
     transactions,
     loadTransactions,
     ensureInvoice,
-    payInvoice,
+    payInvoiceFull,
     payInvoicePartial,
     installInvoice,
     updateAccountFiduciary,
   } = useAppStore()
+
+  // Busca account do store
+  const account = accounts.find(a => a.id === accountId)
 
   const [tab, setTab] = useState<Tab>('fatura')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   // --- Config fields ---
-  const [closeDay, setCloseDay] = useState(account.billing_close_day ?? 1)
-  const [dueDay, setDueDay] = useState(account.billing_due_day ?? 10)
-  const [creditLimit, setCreditLimit] = useState(account.credit_limit ?? 0)
+  const [closeDay, setCloseDay] = useState(account?.billing_close_day ?? 1)
+  const [dueDay, setDueDay] = useState(account?.billing_due_day ?? 10)
+  const [creditLimit, setCreditLimit] = useState(account?.credit_limit ?? 0)
   const [configSaving, setConfigSaving] = useState(false)
 
   // --- Payment modal ---
@@ -42,38 +45,58 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
   const [payType, setPayType] = useState<'total' | 'parcial' | 'parcelar'>('total')
   const [payAmount, setPayAmount] = useState('')
   const [payInstallments, setPayInstallments] = useState('2')
-  const [paySourceAccountId, setPaySourceAccountId] = useState('')  // ← NOVO: conta debitada
+  const [paySourceAccountId, setPaySourceAccountId] = useState('')
   const [payInterest, setPayInterest] = useState('')
 
-  // Contas correntes disponíveis para debitar (checking, savings, overdraft — excluindo fiduciárias)
+  // Contas correntes disponíveis para debitar
   const debitableAccounts = accounts.filter(
     (a) =>
       a.is_active &&
-      a.id !== account.id &&
+      a.id !== accountId &&
       ['checking', 'savings', 'overdraft', 'wallet'].includes(a.type)
   )
 
   // Fatura atual
-  const invoice: Invoice | undefined = invoices.find((i) => i.account_id === account.id)
+  const invoice: Invoice | undefined = invoices.find((i) => i.account_id === accountId)
 
   useEffect(() => {
+    if (!accountId) return
     const init = async () => {
       setLoading(true)
       await loadTransactions()
-      await ensureInvoice(account.id)
+      await ensureInvoice(accountId)
       setLoading(false)
     }
     init()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account.id])
+  }, [accountId])
+
+  // Sincroniza campos de config quando account carrega
+  useEffect(() => {
+    if (account) {
+      setCloseDay(account.billing_close_day ?? 1)
+      setDueDay(account.billing_due_day ?? 10)
+      setCreditLimit(account.credit_limit ?? 0)
+    }
+  }, [account?.id])
+
+  if (!account) {
+    return (
+      <>
+        <div className="fixed inset-0 bg-black/70 z-40" onClick={onClose} />
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#1c2a1f] rounded-t-2xl p-6 border-t border-[rgba(109,212,0,0.2)]">
+          <p className="text-center text-[#6a9060]">Conta não encontrada.</p>
+        </div>
+      </>
+    )
+  }
 
   // Transações do ciclo atual
   const cycleTransactions = transactions.filter(
     (t) =>
-      t.account_id === account.id &&
+      t.account_id === accountId &&
       invoice &&
-      t.reference_date >= invoice.cycle_start &&
-      t.reference_date <= invoice.cycle_end
+      t.date >= invoice.cycle_start &&
+      t.date <= invoice.cycle_end
   )
 
   const totalFatura = invoice?.total_amount ?? 0
@@ -107,8 +130,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
 
     try {
       if (payType === 'total') {
-        // Debita na conta corrente escolhida + quita fatura do CC
-        await payInvoice(invoice.id, account.id, paySourceAccountId)
+        await payInvoiceFull(invoice.id, accountId, paySourceAccountId)
       } else if (payType === 'parcial') {
         const valor = parseFloat(payAmount.replace(',', '.'))
         if (!valor || valor <= 0 || valor > restante) {
@@ -117,7 +139,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
           return
         }
         const juros = parseFloat((payInterest || '0').replace(',', '.'))
-        await payInvoicePartial(invoice.id, account.id, paySourceAccountId, valor, juros)
+        await payInvoicePartial(invoice.id, accountId, paySourceAccountId, valor, juros)
       } else {
         const n = parseInt(payInstallments)
         if (!n || n < 2) {
@@ -125,11 +147,11 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
           setLoading(false)
           return
         }
-        await installInvoice(invoice.id, account.id, paySourceAccountId, n)
+        await installInvoice(invoice.id, accountId, paySourceAccountId, n)
       }
 
       await loadTransactions()
-      await ensureInvoice(account.id)
+      await ensureInvoice(accountId)
       setShowPayModal(false)
     } catch (e: any) {
       setError(e.message ?? 'Erro ao processar pagamento.')
@@ -140,13 +162,13 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
 
   const handleSaveConfig = async () => {
     setConfigSaving(true)
-    await updateAccountFiduciary(account.id, {
+    await updateAccountFiduciary(accountId, {
       billing_close_day: closeDay,
       billing_due_day: dueDay,
       credit_limit: creditLimit,
     })
     await loadTransactions()
-    await ensureInvoice(account.id)
+    await ensureInvoice(accountId)
     setConfigSaving(false)
   }
 
@@ -171,19 +193,17 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
 
       {/* Bottom Sheet */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-[#1c2a1f] rounded-t-2xl max-h-[92vh] overflow-y-auto border-t border-[rgba(109,212,0,0.2)]">
-        {/* Handle */}
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 rounded-full bg-[#3a5a3e]" />
         </div>
 
-        {/* Header */}
         <div className="px-5 pb-3 flex items-center justify-between">
           <div>
             <p className="font-['Barlow_Condensed'] font-black uppercase tracking-wider text-[#e8f5e2] text-lg">
               {account.name}
             </p>
             <p className="text-xs text-[#6a9060]">
-              {account.type === 'prepaid_card' ? 'CC PRÉ-PAGO' : 'CC NORMAL'} · FATURA
+              {account.type === 'prepaid_card' ? 'CC PRÉ-PAGO' : account.type === 'credit_card' ? 'CC NORMAL' : 'CHEQUE ESPECIAL'} · FATURA
             </p>
           </div>
           <button onClick={onClose} className="text-[#6a9060] text-xl font-bold px-2">✕</button>
@@ -207,7 +227,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
         </div>
 
         <div className="px-5 pt-4 pb-8">
-          {/* ===================== TAB FATURA ===================== */}
+          {/* TAB FATURA */}
           {tab === 'fatura' && (
             <div className="space-y-4">
               {loading && (
@@ -216,7 +236,6 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
 
               {!loading && invoice && (
                 <>
-                  {/* Status */}
                   <div className="flex items-center justify-between">
                     <span className="text-[#a8c8a0] text-xs">Status</span>
                     <span className={`font-['Barlow_Condensed'] font-black text-sm ${statusColor[invoice.status] ?? 'text-[#e8f5e2]'}`}>
@@ -224,7 +243,6 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                     </span>
                   </div>
 
-                  {/* Cards totais */}
                   <div className="grid grid-cols-3 gap-2">
                     {[
                       { label: 'Total', value: totalFatura, color: 'text-[#ff6b6b]' },
@@ -241,44 +259,50 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                   </div>
 
                   {/* Barra de limite */}
-                  <div className="bg-[#223026] rounded-xl p-3 space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#a8c8a0]">Limite disponível</span>
-                      <span className={`font-['JetBrains_Mono'] font-semibold ${currentBalance < 0 ? 'text-[#ff6b6b]' : 'text-[#6dd400]'}`}>
-                        {fmtCurrency(currentBalance)}
-                      </span>
+                  {creditLimit_ > 0 && (
+                    <div className="bg-[#223026] rounded-xl p-3 space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#a8c8a0]">Limite disponível</span>
+                        <span className={`font-['JetBrains_Mono'] font-semibold ${currentBalance < 0 ? 'text-[#ff6b6b]' : 'text-[#6dd400]'}`}>
+                          {fmtCurrency(currentBalance)}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-[#2a3a2e] rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            usedPercent > 80 ? 'bg-[#ff6b6b]' : usedPercent > 50 ? 'bg-amber-400' : 'bg-[#6dd400]'
+                          }`}
+                          style={{ width: `${Math.min(Math.max(usedPercent, 0), 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex justify-between text-xs text-[#6a9060]">
+                        <span>Limite total: {fmtCurrency(creditLimit_)}</span>
+                        <span>{usedPercent.toFixed(0)}% utilizado</span>
+                      </div>
                     </div>
-                    <div className="h-2 bg-[#2a3a2e] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          usedPercent > 80 ? 'bg-[#ff6b6b]' : usedPercent > 50 ? 'bg-amber-400' : 'bg-[#6dd400]'
-                        }`}
-                        style={{ width: `${Math.min(usedPercent, 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-xs text-[#6a9060]">
-                      <span>Limite total: {fmtCurrency(creditLimit_)}</span>
-                      <span>{usedPercent.toFixed(0)}% utilizado</span>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Datas */}
                   <div className="bg-[#223026] rounded-xl p-3 space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#a8c8a0]">Fechamento</span>
-                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
-                        {format(new Date(invoice.cycle_end + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-[#a8c8a0]">Vencimento</span>
-                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
-                        {format(new Date(invoice.due_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
-                      </span>
-                    </div>
+                    {invoice.close_date && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#a8c8a0]">Fechamento</span>
+                        <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
+                          {format(new Date(invoice.close_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                        </span>
+                      </div>
+                    )}
+                    {invoice.due_date && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-[#a8c8a0]">Vencimento</span>
+                        <span className="text-[#e8f5e2] font-['JetBrains_Mono']">
+                          {format(new Date(invoice.due_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR })}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-xs">
                       <span className="text-[#a8c8a0]">Referência</span>
-                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">{invoice.ref_month}</span>
+                      <span className="text-[#e8f5e2] font-['JetBrains_Mono']">{invoice.reference_month}</span>
                     </div>
                   </div>
 
@@ -299,7 +323,6 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                     </div>
                   )}
 
-                  {/* Botão Pagar */}
                   {invoice.status !== 'PAGO' && (
                     <button
                       onClick={handleOpenPay}
@@ -310,44 +333,44 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                   )}
                 </>
               )}
+
+              {!loading && !invoice && (
+                <p className="text-center text-[#6a9060] text-sm py-4">Nenhuma fatura encontrada para este ciclo.</p>
+              )}
             </div>
           )}
 
-          {/* ===================== TAB CONFIG ===================== */}
+          {/* TAB CONFIG */}
           {tab === 'config' && (
             <div className="space-y-4">
               <div className="space-y-3">
-                {[
-                  { label: 'Dia de fechamento', value: closeDay, setter: setCloseDay, min: 1, max: 31 },
-                  { label: 'Dia de vencimento', value: dueDay, setter: setDueDay, min: 1, max: 31 },
-                ].map(({ label, value, setter, min, max }) => (
-                  <div key={label}>
-                    <label className="block text-xs text-[#a8c8a0] mb-1">{label}</label>
-                    <input
-                      type="number"
-                      min={min}
-                      max={max}
-                      value={value}
-                      onChange={(e) => setter(Number(e.target.value))}
-                      className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
-                    />
-                  </div>
-                ))}
-
+                <div>
+                  <label className="block text-xs text-[#a8c8a0] mb-1">Dia de fechamento</label>
+                  <input
+                    type="number" min={1} max={31} value={closeDay}
+                    onChange={(e) => setCloseDay(Number(e.target.value))}
+                    className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-[#a8c8a0] mb-1">Dia de vencimento</label>
+                  <input
+                    type="number" min={1} max={31} value={dueDay}
+                    onChange={(e) => setDueDay(Number(e.target.value))}
+                    className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
+                  />
+                </div>
                 {account.type === 'credit_card' && (
                   <div>
                     <label className="block text-xs text-[#a8c8a0] mb-1">Limite de crédito (R$)</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={creditLimit}
+                      type="number" min={0} value={creditLimit}
                       onChange={(e) => setCreditLimit(Number(e.target.value))}
                       className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
                     />
                   </div>
                 )}
               </div>
-
               <button
                 onClick={handleSaveConfig}
                 disabled={configSaving}
@@ -358,18 +381,18 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
             </div>
           )}
 
-          {/* ===================== TAB HISTÓRICO ===================== */}
+          {/* TAB HISTÓRICO */}
           {tab === 'historico' && (
-            <AuditLog accountId={account.id} />
+            <AuditLog accountId={accountId} />
           )}
         </div>
       </div>
 
-      {/* ===================== MODAL DE PAGAMENTO ===================== */}
+      {/* MODAL DE PAGAMENTO */}
       {showPayModal && (
         <>
-          <div className="fixed inset-0 bg-black/80 z-60" onClick={() => setShowPayModal(false)} />
-          <div className="fixed bottom-0 left-0 right-0 z-70 bg-[#1c2a1f] rounded-t-2xl border-t border-[rgba(109,212,0,0.2)] px-5 pt-4 pb-8 space-y-4">
+          <div className="fixed inset-0 bg-black/80 z-[60]" onClick={() => setShowPayModal(false)} />
+          <div className="fixed bottom-0 left-0 right-0 z-[70] bg-[#1c2a1f] rounded-t-2xl border-t border-[rgba(109,212,0,0.2)] px-5 pt-4 pb-8 space-y-4">
             <div className="flex justify-center mb-1">
               <div className="w-10 h-1 rounded-full bg-[#3a5a3e]" />
             </div>
@@ -378,14 +401,14 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
               Pagar Fatura · {account.name}
             </p>
 
-            {/* ── SELEÇÃO DE CONTA DEBITADA ── */}
+            {/* Seleção de conta debitada */}
             <div>
               <label className="block text-xs text-[#a8c8a0] mb-1">
                 Débito de qual conta? <span className="text-[#ff6b6b]">*</span>
               </label>
               {debitableAccounts.length === 0 ? (
                 <p className="text-xs text-[#ff6b6b]">
-                  Nenhuma conta corrente disponível. Cadastre uma conta do tipo Corrente, Poupança ou similar.
+                  Nenhuma conta corrente disponível.
                 </p>
               ) : (
                 <select
@@ -430,7 +453,6 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
               </div>
             </div>
 
-            {/* Campos condicionais */}
             {payType === 'total' && (
               <div className="bg-[#223026] rounded-xl p-3">
                 <div className="flex justify-between text-sm">
@@ -449,8 +471,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                     Valor a pagar (máx. {fmtCurrency(restante)})
                   </label>
                   <input
-                    type="number"
-                    value={payAmount}
+                    type="number" value={payAmount}
                     onChange={(e) => setPayAmount(e.target.value)}
                     placeholder="0,00"
                     className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
@@ -459,8 +480,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
                 <div>
                   <label className="block text-xs text-[#a8c8a0] mb-1">Juros e multas (R$)</label>
                   <input
-                    type="number"
-                    value={payInterest}
+                    type="number" value={payInterest}
                     onChange={(e) => setPayInterest(e.target.value)}
                     placeholder="0,00"
                     className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
@@ -473,10 +493,7 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
               <div>
                 <label className="block text-xs text-[#a8c8a0] mb-1">Número de parcelas</label>
                 <input
-                  type="number"
-                  min={2}
-                  max={48}
-                  value={payInstallments}
+                  type="number" min={2} max={48} value={payInstallments}
                   onChange={(e) => setPayInstallments(e.target.value)}
                   className="w-full bg-[#223026] border border-[rgba(109,212,0,0.2)] rounded-xl px-4 py-2.5 text-[#e8f5e2] font-['JetBrains_Mono'] text-sm outline-none focus:border-[#6dd400]"
                 />
@@ -511,24 +528,28 @@ export default function InvoicePanel({ account, onClose }: InvoiceModalProps) {
   )
 }
 
-// ── Sub-componente: Log de auditoria ──────────────────────────────
+// Sub-componente: Log de auditoria
 function AuditLog({ accountId }: { accountId: string }) {
-  const { supabase } = useAppStore()
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const { supabase } = useAppStore() as any
 
   useEffect(() => {
-    const fetch = async () => {
-      const { data } = await supabase
-        .from('invoice_audit_log')
-        .select('*')
-        .eq('account_id', accountId)
-        .order('created_at', { ascending: false })
-        .limit(50)
-      setLogs(data ?? [])
+    const fetchLogs = async () => {
+      try {
+        const { data } = await supabase
+          .from('invoice_audit_log')
+          .select('*')
+          .eq('account_id', accountId)
+          .order('created_at', { ascending: false })
+          .limit(50)
+        setLogs(data ?? [])
+      } catch (e) {
+        setLogs([])
+      }
       setLoading(false)
     }
-    fetch()
+    fetchLogs()
   }, [accountId])
 
   if (loading) return <p className="text-center text-[#6a9060] text-sm py-4">Carregando...</p>
@@ -547,7 +568,7 @@ function AuditLog({ accountId }: { accountId: string }) {
             </span>
           </div>
           {log.details && (
-            <p className="text-[#a8c8a0] text-xs mt-1">{JSON.stringify(log.details)}</p>
+            <p className="text-[#a8c8a0] text-xs mt-1 break-all">{JSON.stringify(log.details)}</p>
           )}
         </div>
       ))}
