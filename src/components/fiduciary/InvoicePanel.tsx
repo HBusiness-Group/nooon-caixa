@@ -574,16 +574,17 @@ function formatLogDetails(action: string, newValue: any): string {
 function AuditLog({ accountId }: { accountId: string }) {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { invoices, supabase } = useAppStore() as any
+  const { invoices, userId, supabase } = useAppStore() as any
 
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        // Busca todas as faturas da conta (incluindo antigas não no store)
+        // Busca via user_id para satisfazer RLS
         const { data: invData } = await supabase
           .from('invoices')
           .select('id, reference_month')
           .eq('account_id', accountId)
+          .eq('user_id', userId)
 
         const ids = (invData ?? []).map((i: any) => i.id)
         if (ids.length === 0) {
@@ -596,6 +597,7 @@ function AuditLog({ accountId }: { accountId: string }) {
           .from('invoice_audit_log')
           .select('*, invoices(reference_month)')
           .in('invoice_id', ids)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(50)
         setLogs(data ?? [])
@@ -605,7 +607,7 @@ function AuditLog({ accountId }: { accountId: string }) {
       setLoading(false)
     }
     fetchLogs()
-  }, [accountId])
+  }, [accountId, userId])
 
   if (loading) return <p className="text-center text-[#6a9060] text-sm py-4">Carregando...</p>
   if (logs.length === 0) return <p className="text-center text-[#6a9060] text-sm py-4">Nenhum registro de auditoria.</p>
