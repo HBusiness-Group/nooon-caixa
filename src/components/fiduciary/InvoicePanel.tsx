@@ -211,7 +211,7 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
 
         {/* Tabs */}
         <div className="flex border-b border-[rgba(109,212,0,0.15)] px-5 gap-6">
-          {(['fatura', 'config', 'historico'] as Tab[]).map((t) => (
+          {(['fatura', 'config'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -381,10 +381,7 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
             </div>
           )}
 
-          {/* TAB HISTÓRICO */}
-          {tab === 'historico' && (
-            <AuditLog accountId={accountId} />
-          )}
+
         </div>
       </div>
 
