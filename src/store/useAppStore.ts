@@ -524,6 +524,8 @@ ensureInvoice: async (accountId, referenceMonth) => {
     await get().loadTransactions()
     await get().loadAccounts()
     await get().ensureInvoice(ccAccountId)
+    await get().ensureInvoice(ccAccountId, nextReferenceMonth(currentReferenceMonth()))
+    await get().loadInvoices()
   },
 
   payInvoicePartial: async (invoiceId, ccAccountId, sourceAccountId, paidAmount, juros) => {
