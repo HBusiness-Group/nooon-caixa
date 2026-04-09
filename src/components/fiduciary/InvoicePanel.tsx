@@ -579,28 +579,38 @@ function AuditLog({ accountId }: { accountId: string }) {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        // Busca via user_id para satisfazer RLS
+        // 1. Busca faturas da conta
         const { data: invData } = await supabase
           .from('invoices')
           .select('id, reference_month')
           .eq('account_id', accountId)
           .eq('user_id', userId)
 
-        const ids = (invData ?? []).map((i: any) => i.id)
+        const invMap: Record<string, string> = {}
+        ;(invData ?? []).forEach((i: any) => { invMap[i.id] = i.reference_month })
+
+        const ids = Object.keys(invMap)
         if (ids.length === 0) {
           setLogs([])
           setLoading(false)
           return
         }
 
+        // 2. Busca logs sem join
         const { data } = await supabase
           .from('invoice_audit_log')
-          .select('*, invoices(reference_month)')
+          .select('*')
           .in('invoice_id', ids)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(50)
-        setLogs(data ?? [])
+
+        // 3. Enriquecer com reference_month do map local
+        const enriched = (data ?? []).map((log: any) => ({
+          ...log,
+          reference_month: invMap[log.invoice_id] ?? '',
+        }))
+        setLogs(enriched)
       } catch (e) {
         setLogs([])
       }
@@ -618,7 +628,7 @@ function AuditLog({ accountId }: { accountId: string }) {
         const label    = ACTION_LABEL[log.action] ?? log.action
         const color    = ACTION_COLOR[log.action] ?? '#a8c8a0'
         const detail   = formatLogDetails(log.action, log.new_value)
-        const refMonth = log.invoices?.reference_month ?? ''
+        const refMonth = log.reference_month ?? ''
         return (
           <div key={log.id} className="bg-[#223026] rounded-xl p-3 space-y-1">
             <div className="flex justify-between items-center">
