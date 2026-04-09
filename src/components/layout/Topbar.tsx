@@ -168,7 +168,7 @@ export default function Topbar() {
                   </button>
                   {showBalances && (
                     <div className="border-t mx-3 mb-2 pt-2" style={{ borderColor: 'rgba(109,212,0,0.1)' }}>
-                      {accounts.map(a => (
+                      {[...accounts].sort((a, b) => (b.current_balance ?? 0) - (a.current_balance ?? 0)).map(a => (
                         <div key={a.id} className="flex items-center justify-between px-1 py-1.5">
                           <div className="flex items-center gap-2">
                             <span className="w-2 h-2 rounded-full" style={{ background: a.color }} />
