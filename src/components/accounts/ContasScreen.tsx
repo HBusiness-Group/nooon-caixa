@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { useAppStore, isFiduciary, isCreditCard, isCreditCardNormal, isPrepaidCard, isOverdraft } from '@/store/useAppStore'
+import { nextReferenceMonth } from '@/lib/invoiceUtils'
 import { fmtCurrency } from '@/lib/utils'
 import InvoicePanel from '@/components/fiduciary/InvoicePanel'
 
@@ -106,7 +107,10 @@ export default function ContasScreen() {
     const fiduciaryAccounts = accounts.filter(a => isFiduciary(a.type))
     if (fiduciaryAccounts.length === 0) return
     if (transactions.length === 0) return
-    fiduciaryAccounts.forEach(a => ensureInvoice(a.id, refMonth))
+    fiduciaryAccounts.forEach(a => {
+      ensureInvoice(a.id, refMonth)
+      ensureInvoice(a.id, nextReferenceMonth(refMonth))
+    })
   }, [accounts, transactions])
 
   // Label do mês da fatura = mês do vencimento (apenas visual)
@@ -125,8 +129,14 @@ export default function ContasScreen() {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  // Retorna a fatura mais relevante: prefere EM_ABERTO/PARCIAL/PARCELADO
+  // Se a do mês atual está PAGO, busca a do próximo mês
   function getInvoice(accountId: string) {
-    return invoices.find(i => i.account_id === accountId && i.reference_month === refMonth)
+    const current = invoices.find(i => i.account_id === accountId && i.reference_month === refMonth)
+    if (current && current.status !== 'PAGO') return current
+    const next = invoices.find(i => i.account_id === accountId && i.reference_month === nextReferenceMonth(refMonth))
+    if (next) return next
+    return current // fallback: retorna a atual mesmo que PAGO
   }
 
   function hasTransactions(accountId: string) {
