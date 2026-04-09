@@ -402,7 +402,7 @@ export default function ContasScreen() {
                   >
                     Editar
                   </button>
-                  {!hasTransactions(account.id) && (
+                  {!hasTransactions(account.id) && (account.current_balance ?? 0) === 0 && (
                     <button
                       onClick={() => handleDeleteAccount(account.id)}
                       className="px-2 py-1 rounded-lg text-[10px] font-bold border transition-all"
@@ -537,7 +537,7 @@ export default function ContasScreen() {
                       >
                         {isPending ? '⚠ Fatura' : '📋 Fatura'}
                       </button>
-                      {!hasTransactions(account.id) && (
+                      {!hasTransactions(account.id) && (account.current_balance ?? 0) === 0 && (
                         <button
                           onClick={() => handleDeleteAccount(account.id)}
                           className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all"
