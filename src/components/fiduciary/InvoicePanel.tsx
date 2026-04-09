@@ -574,17 +574,16 @@ function formatLogDetails(action: string, newValue: any): string {
 function AuditLog({ accountId }: { accountId: string }) {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { invoices, userId, supabase } = useAppStore() as any
+  const { supabase } = useAppStore() as any
 
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        // 1. Busca faturas da conta
+        // 1. Busca faturas da conta (RLS resolve via JWT)
         const { data: invData } = await supabase
           .from('invoices')
           .select('id, reference_month')
           .eq('account_id', accountId)
-          .eq('user_id', userId)
 
         const invMap: Record<string, string> = {}
         ;(invData ?? []).forEach((i: any) => { invMap[i.id] = i.reference_month })
@@ -596,12 +595,11 @@ function AuditLog({ accountId }: { accountId: string }) {
           return
         }
 
-        // 2. Busca logs sem join
+        // 2. Busca logs (RLS resolve via JWT com auth.uid() = user_id)
         const { data } = await supabase
           .from('invoice_audit_log')
           .select('*')
           .in('invoice_id', ids)
-          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(50)
 
@@ -617,7 +615,7 @@ function AuditLog({ accountId }: { accountId: string }) {
       setLoading(false)
     }
     fetchLogs()
-  }, [accountId, userId])
+  }, [accountId])
 
   if (loading) return <p className="text-center text-[#6a9060] text-sm py-4">Carregando...</p>
   if (logs.length === 0) return <p className="text-center text-[#6a9060] text-sm py-4">Nenhum registro de auditoria.</p>
