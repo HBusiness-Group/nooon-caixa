@@ -528,19 +528,71 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
   )
 }
 
+// Labels legíveis para cada ação
+const ACTION_LABEL: Record<string, string> = {
+  STATUS_CHANGED:      'Pagamento total',
+  PAYMENT_REGISTERED:  'Pagamento parcial',
+  INSTALLMENT_CREATED: 'Fatura parcelada',
+  INTEREST_ADDED:      'Juros adicionados',
+}
+
+const ACTION_COLOR: Record<string, string> = {
+  STATUS_CHANGED:      '#6dd400',
+  PAYMENT_REGISTERED:  '#ffb340',
+  INSTALLMENT_CREATED: '#5bc8ff',
+  INTEREST_ADDED:      '#ff6b6b',
+}
+
+function formatLogDetails(action: string, newValue: any): string {
+  if (!newValue) return ''
+  try {
+    const v = typeof newValue === 'string' ? JSON.parse(newValue) : newValue
+    if (action === 'STATUS_CHANGED') {
+      const valor = v.paid_amount ?? v.valor
+      return valor ? `Valor pago: R$ ${Number(valor).toFixed(2).replace('.', ',')}` : ''
+    }
+    if (action === 'PAYMENT_REGISTERED') {
+      const parts = []
+      if (v.paid_amount) parts.push(`Pago: R$ ${Number(v.paid_amount).toFixed(2).replace('.', ',')}`)
+      if (v.remaining)   parts.push(`Restante: R$ ${Number(v.remaining).toFixed(2).replace('.', ',')}`)
+      return parts.join(' · ')
+    }
+    if (action === 'INSTALLMENT_CREATED') {
+      const parts = []
+      if (v.installments) parts.push(`${v.installments}x`)
+      if (v.total_amount) parts.push(`R$ ${Number(v.total_amount).toFixed(2).replace('.', ',')}`)
+      return parts.join(' de ')
+    }
+    if (action === 'INTEREST_ADDED') {
+      return v.interest_amount ? `R$ ${Number(v.interest_amount).toFixed(2).replace('.', ',')}` : ''
+    }
+  } catch { }
+  return ''
+}
+
 // Sub-componente: Log de auditoria
 function AuditLog({ accountId }: { accountId: string }) {
   const [logs, setLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { supabase } = useAppStore() as any
+  const { invoices, supabase } = useAppStore() as any
 
   useEffect(() => {
     const fetchLogs = async () => {
+      const invoiceIds = invoices
+        .filter((i: any) => i.account_id === accountId)
+        .map((i: any) => i.id)
+
+      if (invoiceIds.length === 0) {
+        setLogs([])
+        setLoading(false)
+        return
+      }
+
       try {
         const { data } = await supabase
           .from('invoice_audit_log')
-          .select('*')
-          .eq('account_id', accountId)
+          .select('*, invoices(reference_month)')
+          .in('invoice_id', invoiceIds)
           .order('created_at', { ascending: false })
           .limit(50)
         setLogs(data ?? [])
@@ -550,28 +602,42 @@ function AuditLog({ accountId }: { accountId: string }) {
       setLoading(false)
     }
     fetchLogs()
-  }, [accountId])
+  }, [accountId, invoices])
 
   if (loading) return <p className="text-center text-[#6a9060] text-sm py-4">Carregando...</p>
   if (logs.length === 0) return <p className="text-center text-[#6a9060] text-sm py-4">Nenhum registro de auditoria.</p>
 
   return (
     <div className="space-y-2">
-      {logs.map((log) => (
-        <div key={log.id} className="bg-[#223026] rounded-xl p-3">
-          <div className="flex justify-between items-start">
-            <span className="text-[#e8f5e2] text-xs font-['Barlow_Condensed'] uppercase tracking-wider">
-              {log.action}
-            </span>
-            <span className="text-[#6a9060] text-xs font-['JetBrains_Mono']">
-              {format(new Date(log.created_at), 'dd/MM HH:mm', { locale: ptBR })}
-            </span>
+      {logs.map((log) => {
+        const label    = ACTION_LABEL[log.action] ?? log.action
+        const color    = ACTION_COLOR[log.action] ?? '#a8c8a0'
+        const detail   = formatLogDetails(log.action, log.new_value)
+        const refMonth = log.invoices?.reference_month ?? ''
+        return (
+          <div key={log.id} className="bg-[#223026] rounded-xl p-3 space-y-1">
+            <div className="flex justify-between items-center">
+              <span
+                className="font-['Barlow_Condensed'] font-black uppercase tracking-wider text-xs px-2 py-0.5 rounded-full"
+                style={{ color, background: color + '18' }}
+              >
+                {label}
+              </span>
+              <span className="text-[#6a9060] text-xs font-['JetBrains_Mono']">
+                {format(new Date(log.created_at), 'dd/MM/yy HH:mm', { locale: ptBR })}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              {detail ? (
+                <span className="text-[#e8f5e2] text-xs font-['JetBrains_Mono']">{detail}</span>
+              ) : <span />}
+              {refMonth && (
+                <span className="text-[#6a9060] text-[10px]">fatura {refMonth}</span>
+              )}
+            </div>
           </div>
-          {log.details && (
-            <p className="text-[#a8c8a0] text-xs mt-1 break-all">{JSON.stringify(log.details)}</p>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
