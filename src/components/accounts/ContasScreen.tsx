@@ -501,7 +501,7 @@ export default function ContasScreen() {
                         )}
                       </div>
                       <div className="text-[11px] flex items-center gap-1.5" style={{ color: '#6a9060' }}>
-                        {ACCOUNT_TYPE_LABEL[account.type]} · {getInvoiceMonthLabel(account)}
+                        {ACCOUNT_TYPE_LABEL[account.type]} · {inv?.reference_month ?? refMonth}
                         {isCreditCardNormal(account.type) && (
                           <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase tracking-wider" style={{ background: 'rgba(109,212,0,0.12)', color: '#6dd400' }}>crédito</span>
                         )}
