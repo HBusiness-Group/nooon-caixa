@@ -20,6 +20,7 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
     invoices,
     transactions,
     loadTransactions,
+    loadAccounts,
     ensureInvoice,
     payInvoiceFull,
     payInvoicePartial,
@@ -70,14 +71,14 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
     init()
   }, [accountId])
 
-  // Sincroniza campos de config quando account carrega
+  // Sincroniza campos de config quando account ou seus dias mudam
   useEffect(() => {
     if (account) {
       setCloseDay(account.billing_close_day ?? 1)
       setDueDay(account.billing_due_day ?? 10)
       setCreditLimit(account.credit_limit ?? 0)
     }
-  }, [account?.id])
+  }, [account?.id, account?.billing_close_day, account?.billing_due_day, account?.credit_limit])
 
   if (!account) {
     return (
@@ -167,7 +168,9 @@ export default function InvoicePanel({ accountId, onClose }: InvoiceModalProps) 
       billing_due_day: dueDay,
       credit_limit: creditLimit,
     })
-    await loadTransactions()
+    // Recarrega accounts ANTES de ensureInvoice para que o
+    // recalculo de close_date/due_date use os novos dias do banco
+    await loadAccounts()
     await ensureInvoice(accountId)
     setConfigSaving(false)
   }
