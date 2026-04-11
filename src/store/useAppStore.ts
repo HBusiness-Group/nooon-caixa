@@ -428,13 +428,14 @@ ensureInvoice: async (accountId, referenceMonth) => {
     dueDate   = closeDate
   }
 
-  // Se já existe → atualiza total e/ou due_date se EM_ABERTO e divergiu
+  // Se já existe → atualiza total, close_date e/ou due_date se EM_ABERTO e divergiu
   if (existing) {
-    const totalDiff   = Math.abs(existing.total_amount - total) > 0.001
-    const dueDateDiff = existing.due_date !== dueDate
-    if (existing.status === 'EM_ABERTO' && (totalDiff || dueDateDiff)) {
-      await supabase.from('invoices').update({ total_amount: total, due_date: dueDate } as any).eq('id', existing.id)
-      const updated = { ...existing, total_amount: total, due_date: dueDate }
+    const totalDiff     = Math.abs(existing.total_amount - total) > 0.001
+    const closeDateDiff = existing.close_date !== closeDate
+    const dueDateDiff   = existing.due_date   !== dueDate
+    if (existing.status === 'EM_ABERTO' && (totalDiff || closeDateDiff || dueDateDiff)) {
+      await supabase.from('invoices').update({ total_amount: total, close_date: closeDate, due_date: dueDate } as any).eq('id', existing.id)
+      const updated = { ...existing, total_amount: total, close_date: closeDate, due_date: dueDate }
       set(s => ({
         invoices: s.invoices.map(i => i.id === existing.id ? updated : i)
       }))
