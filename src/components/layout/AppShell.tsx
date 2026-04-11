@@ -12,7 +12,7 @@ export default function AppShell() {
   const { activeTab } = useAppStore()
 
   return (
-    <div className="flex flex-col h-screen bg-[#0d1410] max-w-2xl mx-auto">
+    <div className="flex flex-col h-screen w-full bg-[#0d1410]">
       <Topbar />
       <NavBar />
       <main className="flex-1 overflow-y-auto overflow-x-hidden">
