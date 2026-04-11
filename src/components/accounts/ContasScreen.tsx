@@ -487,18 +487,7 @@ export default function ContasScreen() {
                         <div className="font-semibold truncate" style={{ color: '#e8f5e2', fontSize: 14 }}>
                           {account.name}
                         </div>
-                        {/* badge de status */}
-                        {inv && (
-                          <span
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider flex-shrink-0"
-                            style={{
-                              color:      STATUS_COLOR[inv.status] ?? '#94a3b8',
-                              background: (STATUS_COLOR[inv.status] ?? '#94a3b8') + '18',
-                            }}
-                          >
-                            {inv.status === 'EM_ABERTO' ? '⚠ ' : ''}{inv.status.replace('_', ' ')}
-                          </span>
-                        )}
+
                       </div>
                       <div className="text-[11px] flex items-center gap-1.5" style={{ color: '#6a9060' }}>
                         {ACCOUNT_TYPE_LABEL[account.type]} · {inv?.reference_month ?? refMonth}
@@ -535,7 +524,7 @@ export default function ContasScreen() {
                           color:       isPending ? '#ff6b6b' : '#6dd400',
                         }}
                       >
-                        {isPending ? '⚠ Fatura' : '📋 Fatura'}
+                        Fatura
                       </button>
                       {!hasTransactions(account.id) && (account.current_balance ?? 0) === 0 && (
                         <button
