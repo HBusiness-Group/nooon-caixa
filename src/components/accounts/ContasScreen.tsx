@@ -176,11 +176,11 @@ export default function ContasScreen() {
     if (isCreditCard(newType)) {
       fiduciary.billing_close_day = parseInt(newCloseDay)
       fiduciary.billing_due_day   = parseInt(newDueDay)
-      if (newCreditLimit) fiduciary.credit_limit = parseFloat(newCreditLimit)
+      fiduciary.credit_limit      = parseFloat(newBalance)
     }
     if (isOverdraft(newType)) {
       fiduciary.overdraft_due_day = parseInt(newOverdraftDay)
-      if (newOverdraftLimit) fiduciary.overdraft_limit = parseFloat(newOverdraftLimit)
+      fiduciary.overdraft_limit   = parseFloat(newBalance)
     }
 
     await addAccount({ ...base, ...fiduciary } as any)
