@@ -284,7 +284,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .from('transactions')
       .select('*, account:accounts(id,name,color,type)')
       .order('date', { ascending: false })
-      .limit(500)
+      .limit(1500)
     const data: any[] = (res as any).data || []
     set({ transactions: data as Transaction[] })
   },
