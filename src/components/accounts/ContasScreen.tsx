@@ -440,8 +440,11 @@ export default function ContasScreen() {
               const remaining        = (invoiceRemaining !== null && invoiceRemaining > 0)
                 ? invoiceRemaining
                 : (account.current_balance ?? account.initial_balance)
+              const limitUsed   = isCreditCard(account.type) && account.credit_limit
+                ? account.credit_limit - (account.current_balance ?? 0)
+                : 0
               const limitPct    = isCreditCard(account.type) && account.credit_limit
-                ? Math.min((inv?.total_amount ?? 0) / account.credit_limit * 100, 100)
+                ? Math.min(limitUsed / account.credit_limit * 100, 100)
                 : null
 
               const STATUS_COLOR: Record<string, string> = {
@@ -544,7 +547,7 @@ export default function ContasScreen() {
                       <div className="flex justify-between text-[9px] mb-1" style={{ color: '#4a6844' }}>
                         <span>Limite usado</span>
                         <span style={{ color: limitPct > 80 ? '#ff6b6b' : '#6a9060' }}>
-                          {fmtCurrency(inv.total_amount)} / {fmtCurrency(account.credit_limit!)} ({limitPct.toFixed(0)}%)
+                          {fmtCurrency(limitUsed)} / {fmtCurrency(account.credit_limit!)} ({limitPct.toFixed(0)}%)
                         </span>
                       </div>
                       <div className="w-full h-1.5 rounded-full overflow-hidden mb-2" style={{ background: '#2a3a2e' }}>
