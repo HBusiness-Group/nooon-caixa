@@ -55,8 +55,16 @@ export default function RegistroScreen() {
   const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   const hasActiveSearch = search.trim() !== '' || dateFrom !== '' || dateTo !== ''
 
+  // Corte do arquivo: meses com 2+ meses atrás ficam só no Arquivo
+  // Ex: abril/26 → corte é 2026-03-01 (março ainda aparece no Registro)
+  const archiveCutoff = (() => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+  })()
+
   const filtered = useMemo(() => {
-    let txs = [...transactions]
+    // Exclui registros que já foram para o Arquivo (2+ meses atrás)
+    let txs = transactions.filter(t => t.date >= archiveCutoff)
 
     if (filter === 'completed')  txs = txs.filter(t => t.status === 'completed')
     else if (filter === 'planned')   txs = txs.filter(t => t.status === 'planned')
@@ -87,7 +95,7 @@ export default function RegistroScreen() {
       if (pa !== pb) return pa - pb
       return a.date.localeCompare(b.date)
     })
-  }, [transactions, filter, search, dateFrom, dateTo])
+  }, [transactions, filter, search, dateFrom, dateTo, archiveCutoff])
 
   const thisMonthTxs = transactions.filter(t => t.date.startsWith(thisMonth))
   const income  = thisMonthTxs.filter(t => t.type === 'income'  && t.status === 'completed').reduce((s, t) => s + t.amount, 0)
