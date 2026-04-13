@@ -436,10 +436,10 @@ export default function ContasScreen() {
               const inv              = getInvoice(account.id)
               const isPending        = inv && inv.status !== 'PAGO'
               const invoiceRemaining = inv ? inv.total_amount - inv.paid_amount : null
-              // Se fatura zerada ou inexistente, usa current_balance da view (igual às Ferramentas)
+              // Se fatura zerada ou inexistente, mostra zero (não usa current_balance como fallback)
               const remaining        = (invoiceRemaining !== null && invoiceRemaining > 0)
                 ? invoiceRemaining
-                : (account.current_balance ?? account.initial_balance)
+                : 0
               const limitUsed   = isCreditCard(account.type) && account.credit_limit
                 ? account.credit_limit - (account.current_balance ?? 0)
                 : 0
@@ -507,12 +507,12 @@ export default function ContasScreen() {
                     <div className="text-right flex-shrink-0">
                       <div
                         className="font-['JetBrains_Mono'] font-bold"
-                        style={{ fontSize: 15, color: invoiceRemaining !== null && invoiceRemaining > 0 ? '#ff6b6b' : '#6dd400' }}
+                        style={{ fontSize: 15, color: remaining > 0 ? '#ff6b6b' : '#6dd400' }}
                       >
-                        {fmtCurrency(Math.abs(remaining))}
+                        {fmtCurrency(remaining)}
                       </div>
                       <div className="text-[10px]" style={{ color: '#4a6844' }}>
-                        {invoiceRemaining !== null && invoiceRemaining > 0 ? 'em aberto' : 'saldo atual'}
+                        {remaining > 0 ? 'em aberto' : 'fatura zerada'}
                       </div>
                     </div>
 
